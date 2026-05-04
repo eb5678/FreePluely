@@ -412,7 +412,7 @@ This includes essential packages like WebKitGTK (Linux), system libraries, and o
 
 ```bash
 # Clone the repository
-git clone https://github.com/eb5678/pluely.git
+git clone https://github.com/eb5678/FreePluely.git
 cd pluely
 
 # Install dependencies
