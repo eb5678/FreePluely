@@ -1,8 +1,6 @@
 import { SparklesIcon } from "lucide-react";
-import { Button } from "@/components";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { useMenuItems, useVersion } from "@/hooks";
 
 export const Sidebar = () => {
