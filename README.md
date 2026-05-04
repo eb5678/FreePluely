@@ -5,7 +5,7 @@
 
 **FreePluely is Pluely without any telemetry and paywall** 
 - Use your own custom API provider for both Speech-To-Text model and Text model using your own API keys.  
-- Telemtry and Analytics is completely removed. No phoning home to any servers. Original version had telemetry and analytics for posthog.com and pluely.com
+- Telemetry and Analytics is completely removed. No phoning home to any servers. Original version had telemetry and analytics for posthog.com and pluely.com
 
 **The Open Source Alternative to Cluely!** - A lightning-fast, privacy-first AI assistant that works seamlessly during meetings, interviews, and conversations without anyone knowing.
 
