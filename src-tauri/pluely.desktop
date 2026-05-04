@@ -3,7 +3,7 @@ Version=1.0
 Type=Application
 Name=Pluely
 Comment=The Open Source Alternative to Cluely - Lightning-fast, privacy-first AI assistant for meetings and conversations
-Exec=pluely
+Exec=env GDK_BACKEND=x11 pluely
 Icon=pluely
 Terminal=false
 Categories=Utility;AudioVideo;Audio;Development;Office;
