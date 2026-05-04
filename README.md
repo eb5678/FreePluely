@@ -11,6 +11,8 @@
 
 **Available formats:** `.dmg` (macOS) • `.msi` (Windows) • `.exe` (Windows) • `.deb` (Linux) • `.rpm` (Linux) • `.AppImage` (Linux)
 
+**Specify formats:** To specify the format you would like, simply modify the "targets" value in "src-tauri/tauri.conf.json" because it is currently set to "deb" for Debian/Ubuntu based distros.
+
 </div>
 
 ## ⚡ **The Ultimate Lightweight AI Companion**
