@@ -1,12 +1,10 @@
-import { fetchSTT } from "@/lib";
-import { UseCompletionReturn } from "@/types";
-import { useMicVAD } from "@ricky0123/vad-react";
-import { LoaderCircleIcon, MicIcon, MicOffIcon } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { LoaderCircleIcon, SquareIcon } from "lucide-react";
 import { Button } from "@/components";
 import { useApp } from "@/contexts";
-import { floatArrayToWav } from "@/lib/utils";
-import { shouldUsePluelyAPI } from "@/lib/functions/pluely.api";
+import { UseCompletionReturn } from "@/types";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 interface AutoSpeechVADProps {
   submit: UseCompletionReturn["submit"];
@@ -15,7 +13,7 @@ interface AutoSpeechVADProps {
   microphoneDeviceId?: string;
 }
 
-const AutoSpeechVADInternal = ({
+export const AutoSpeechVAD = ({
   submit,
   setState,
   setEnableVAD,
@@ -24,102 +22,97 @@ const AutoSpeechVADInternal = ({
   const [isTranscribing, setIsTranscribing] = useState(false);
   const { selectedSttProvider, allSttProviders } = useApp();
 
-  const audioConstraints: MediaTrackConstraints =
-    microphoneDeviceId && microphoneDeviceId !== "default"
-      ? { deviceId: { exact: microphoneDeviceId } }
-      : {};
+  useEffect(() => {
+    let unlisten: any;
 
-  const vad = useMicVAD({
-    userSpeakingThreshold: 0.6,
-    startOnLoad: true,
-    additionalAudioConstraints: audioConstraints,
-    onSpeechEnd: async (audio) => {
+    const startNativeRecording = async () => {
       try {
-        // convert float32array to blob
-        const audioBlob = floatArrayToWav(audio, 16000, "wav");
+        // 1. Listen for the native audio payload from Rust
+        unlisten = await listen("speech-detected", async (event: any) => {
+          setIsTranscribing(true);
 
-        let transcription: string;
-        const usePluelyAPI = await shouldUsePluelyAPI();
+          // Decode raw Base64 audio into WAV
+          const base64Audio = event.payload as string;
+          const binaryString = atob(base64Audio);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const audioBlob = new Blob([bytes], { type: "audio/wav" });
 
-        // Check if we have a configured speech provider
-        if (!selectedSttProvider.provider && !usePluelyAPI) {
-          console.warn("No speech provider selected");
-          setState((prev: any) => ({
-            ...prev,
-            error:
-              "No speech provider selected. Please select one in settings.",
-          }));
-          return;
-        }
-
-        const providerConfig = allSttProviders.find(
-          (p) => p.id === selectedSttProvider.provider
-        );
-
-        if (!providerConfig && !usePluelyAPI) {
-          console.warn("Selected speech provider configuration not found");
-          setState((prev: any) => ({
-            ...prev,
-            error:
-              "Speech provider configuration not found. Please check your settings.",
-          }));
-          return;
-        }
-
-        setIsTranscribing(true);
-
-        // Use the fetchSTT function for all providers
-        transcription = await fetchSTT({
-          provider: usePluelyAPI ? undefined : providerConfig,
-          selectedProvider: selectedSttProvider,
-          audio: audioBlob,
+          // Send to STT API via curl
+          const { fetchSTT, shouldUsePluelyAPI } = await import("@/lib");
+          const usePluelyAPI = await shouldUsePluelyAPI();
+          const providerConfig = allSttProviders.find(p => p.id === selectedSttProvider.provider);
+          
+          if (providerConfig || usePluelyAPI) {
+            const text = await fetchSTT({
+              provider: usePluelyAPI ? undefined : providerConfig,
+              selectedProvider: selectedSttProvider,
+              audio: audioBlob,
+            });
+            if (text) submit(text);
+          }
+          
+          setIsTranscribing(false);
+          setEnableVAD(false); // Hide red square, return to mic icon
         });
 
-        if (transcription) {
-          submit(transcription);
-        }
-      } catch (error) {
-        console.error("Failed to transcribe audio:", error);
+        // 2. Clear out any other audio captures
+        await invoke("stop_system_audio_capture").catch(() => {});
+
+        // 3. Start the Rust audio daemon
+        const vadConfig = {
+          enabled: false, // Forces continuous manual mode (push to stop)
+          max_recording_duration_secs: 180,
+          hop_size: 1024, sensitivity_rms: 0.012, peak_threshold: 0.035, silence_chunks: 45, min_speech_chunks: 7, pre_speech_chunks: 12, noise_gate_threshold: 0.003
+        };
+        
+        await invoke("start_system_audio_capture", {
+          vadConfig,
+          deviceId: microphoneDeviceId && microphoneDeviceId !== "default" ? microphoneDeviceId : null
+        });
+        
+      } catch (err) {
+        console.error("Native recording failed:", err);
         setState((prev: any) => ({
           ...prev,
-          error:
-            error instanceof Error ? error.message : "Transcription failed",
+          error: "Native microphone access failed.",
         }));
-      } finally {
-        setIsTranscribing(false);
+        setEnableVAD(false);
       }
-    },
-  });
+    };
+
+    startNativeRecording();
+
+    // Cleanup on unmount
+    return () => {
+      if (unlisten) unlisten();
+      invoke("stop_system_audio_capture").catch(() => {});
+    };
+  }, []);
+
+  // Tell Rust to lock the buffer and send it
+  const stopAndSend = async () => {
+    await invoke("manual_stop_continuous").catch(() => {});
+  };
+
+  if (isTranscribing) {
+    return (
+      <Button size="icon" disabled className="cursor-not-allowed">
+        <LoaderCircleIcon className="h-4 w-4 animate-spin text-green-500" />
+      </Button>
+    );
+  }
 
   return (
-    <>
-      <Button
-        size="icon"
-        onClick={() => {
-          if (vad.listening) {
-            vad.pause();
-            setEnableVAD(false);
-          } else {
-            vad.start();
-            setEnableVAD(true);
-          }
-        }}
-        className="cursor-pointer"
-      >
-        {isTranscribing ? (
-          <LoaderCircleIcon className="h-4 w-4 animate-spin text-green-500" />
-        ) : vad.userSpeaking ? (
-          <LoaderCircleIcon className="h-4 w-4 animate-spin" />
-        ) : vad.listening ? (
-          <MicOffIcon className="h-4 w-4 animate-pulse" />
-        ) : (
-          <MicIcon className="h-4 w-4" />
-        )}
-      </Button>
-    </>
+    <Button
+      size="icon"
+      onClick={stopAndSend}
+      className="cursor-pointer bg-red-100 hover:bg-red-200 text-red-600 animate-pulse border-red-200"
+      title="Click to Stop recording and transcribe"
+    >
+      <SquareIcon className="h-4 w-4" fill="currentColor" />
+    </Button>
   );
-};
-
-export const AutoSpeechVAD = (props: AutoSpeechVADProps) => {
-  return <AutoSpeechVADInternal key={props.microphoneDeviceId} {...props} />;
 };

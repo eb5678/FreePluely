@@ -4,6 +4,8 @@ import { AudioVisualizer } from "@/pages/app/components/speech/audio-visualizer"
 import { shouldUsePluelyAPI, fetchSTT } from "@/lib";
 import { useApp } from "@/contexts";
 import { StopCircle, Send } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 interface AudioRecorderProps {
   onTranscriptionComplete: (text: string) => void;
@@ -16,155 +18,105 @@ export const AudioRecorder = ({
   onTranscriptionComplete,
   onCancel,
 }: AudioRecorderProps) => {
-  const { selectedSttProvider, allSttProviders, selectedAudioDevices } =
-    useApp();
-  const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
+  const { selectedSttProvider, allSttProviders, selectedAudioDevices } = useApp();
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [duration, setDuration] = useState(0);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const startTimeRef = useRef<number>(0);
   const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const maxDurationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const unlistenRef = useRef<any>(null);
 
-  // Cleanup function - stops all tracks and clears refs
-  const cleanup = useCallback(() => {
-    // Clear timers
-    if (durationIntervalRef.current) {
-      clearInterval(durationIntervalRef.current);
-      durationIntervalRef.current = null;
+  const cleanup = useCallback(async () => {
+    if (durationIntervalRef.current) clearInterval(durationIntervalRef.current);
+    if (maxDurationTimeoutRef.current) clearTimeout(maxDurationTimeoutRef.current);
+    if (unlistenRef.current) {
+        unlistenRef.current();
+        unlistenRef.current = null;
     }
-    if (maxDurationTimeoutRef.current) {
-      clearTimeout(maxDurationTimeoutRef.current);
-      maxDurationTimeoutRef.current = null;
-    }
-
-    // Stop media recorder
-    if (mediaRecorderRef.current?.state === "recording") {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch (e) {
-        // Ignore errors when stopping
-      }
-    }
-    mediaRecorderRef.current = null;
-
-    // Stop all audio tracks - this is critical for releasing the microphone
-    const stream = streamRef.current;
-    if (stream) {
-      stream.getTracks().forEach((track) => {
-        track.stop();
-        track.enabled = false;
-      });
-      streamRef.current = null;
-    }
-
-    // Also stop from state
-    if (audioStream) {
-      audioStream.getTracks().forEach((track) => {
-        track.stop();
-        track.enabled = false;
-      });
-    }
-    setAudioStream(null);
-  }, [audioStream]);
-
-  useEffect(() => {
-    startRecording();
-
-    // Cleanup on unmount
-    return () => {
-      cleanup();
-    };
+    await invoke("stop_system_audio_capture").catch(() => {});
   }, []);
 
-  const startRecording = async () => {
+  useEffect(() => {
+    startNativeRecording();
+    return () => { cleanup(); };
+  }, []);
+
+  const startNativeRecording = async () => {
     try {
-      const deviceId = selectedAudioDevices?.input?.id;
+      // 1. Listen for audio payload from Rust
+      unlistenRef.current = await listen("speech-detected", async (event: any) => {
+        setIsTranscribing(true);
 
-      const audioConstraints: MediaTrackConstraints =
-        deviceId && deviceId !== "default"
-          ? { deviceId: { exact: deviceId } }
-          : {};
+        const base64Audio = event.payload as string;
+        const binaryString = atob(base64Audio);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const audioBlob = new Blob([bytes], { type: "audio/wav" });
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: audioConstraints,
+        try {
+          const usePluelyAPI = await shouldUsePluelyAPI();
+          const provider = allSttProviders.find(p => p.id === selectedSttProvider.provider);
+
+          const text = await fetchSTT({
+            provider: usePluelyAPI ? undefined : provider,
+            selectedProvider: selectedSttProvider,
+            audio: audioBlob,
+          });
+
+          if (text) onTranscriptionComplete(text);
+          else onCancel();
+        } catch (error) {
+          console.error("Transcription failed:", error);
+          onCancel();
+        }
       });
 
-      // Store in both ref and state
-      streamRef.current = stream;
-      setAudioStream(stream);
+      await invoke("stop_system_audio_capture").catch(() => {});
 
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : "audio/ogg";
-
-      const recorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = recorder;
-      audioChunksRef.current = [];
-      startTimeRef.current = Date.now();
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
-        }
+      // 2. Start Native Capture
+      const vadConfig = {
+        enabled: false, 
+        max_recording_duration_secs: 180,
+        hop_size: 1024, sensitivity_rms: 0.012, peak_threshold: 0.035, silence_chunks: 45, min_speech_chunks: 7, pre_speech_chunks: 12, noise_gate_threshold: 0.003
       };
 
-      recorder.start(100);
+      const deviceId = selectedAudioDevices?.input?.id && selectedAudioDevices.input.id !== "default" 
+        ? selectedAudioDevices.input.id 
+        : null;
 
+      await invoke("start_system_audio_capture", {
+        vadConfig,
+        deviceId
+      });
+
+      startTimeRef.current = Date.now();
       durationIntervalRef.current = setInterval(() => {
         setDuration(Date.now() - startTimeRef.current);
       }, 100);
 
       maxDurationTimeoutRef.current = setTimeout(() => {
-        if (mediaRecorderRef.current?.state === "recording") {
-          handleSend();
-        }
+        handleSend();
       }, MAX_DURATION);
+
     } catch (error) {
-      console.error("Failed to start recording:", error);
+      console.error("Failed to start native recording:", error);
       cleanup();
       onCancel();
     }
   };
 
-  const handleStop = () => {
-    cleanup();
+  const handleStop = async () => {
+    await cleanup();
     onCancel();
   };
 
   const handleSend = async () => {
-    if (!mediaRecorderRef.current || isTranscribing) return;
-
+    if (isTranscribing) return;
     setIsTranscribing(true);
-
-    const mimeType = mediaRecorderRef.current.mimeType;
-    const chunks = [...audioChunksRef.current];
-
-    // Cleanup immediately after getting chunks
-    cleanup();
-
-    try {
-      const audioBlob = new Blob(chunks, { type: mimeType });
-
-      const usePluelyAPI = await shouldUsePluelyAPI();
-      const provider = allSttProviders.find(
-        (p) => p.id === selectedSttProvider.provider
-      );
-
-      const text = await fetchSTT({
-        provider: usePluelyAPI ? undefined : provider,
-        selectedProvider: selectedSttProvider,
-        audio: audioBlob,
-      });
-
-      onTranscriptionComplete(text);
-    } catch (error) {
-      console.error("Transcription failed:", error);
-      onCancel();
-    }
+    await invoke("manual_stop_continuous").catch(() => {});
   };
 
   const formatTime = (ms: number) => {
@@ -177,15 +129,10 @@ export const AudioRecorder = ({
   return (
     <div className="border bg-background rounded-lg overflow-hidden">
       <div className="h-12 relative bg-muted/20">
-        {audioStream ? (
-          <div className="h-full w-full pt-3">
-            <AudioVisualizer stream={audioStream} isRecording={true} />
-          </div>
-        ) : (
-          <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-            Initializing...
-          </div>
-        )}
+        <div className="h-full w-full pt-3">
+          {/* AudioVisualizer has a built-in fake stream generator so it will still animate globally! */}
+          <AudioVisualizer isRecording={!isTranscribing} />
+        </div>
       </div>
       <div className="flex items-center justify-between px-4 py-2.5 border-t bg-muted/5">
         <div className="flex items-center gap-2">

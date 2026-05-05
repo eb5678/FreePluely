@@ -227,8 +227,12 @@ impl SpeakerInput {
         // For Linux, device_id is the PulseAudio sink name for output devices
         let source_name = match device_id {
             Some(ref id) if !id.is_empty() && id != "default" => {
-                let monitor = format!("{}.monitor", id);
-                Some(monitor)
+                // If it's a microphone (starts with alsa_input or source), do NOT append .monitor
+                if id.contains(".monitor") || id.starts_with("alsa_input") || id.contains("source") {
+                    Some(id.clone())
+                } else {
+                    Some(format!("{}.monitor", id))
+                }
             }
             _ => None,
         };
