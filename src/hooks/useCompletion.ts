@@ -14,6 +14,7 @@ import {
   generateMessageId,
   generateRequestId,
   getResponseSettings,
+  fetchSTT,
 } from "@/lib";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -59,7 +60,11 @@ export const useCompletion = () => {
     systemPrompt,
     screenshotConfiguration,
     setScreenshotConfiguration,
+    selectedSttProvider,
+    allSttProviders,
+    selectedAudioDevices,
   } = useApp();
+  
   const globalShortcuts = useGlobalShortcuts();
 
   const [state, setState] = useState<CompletionState>({
@@ -71,12 +76,15 @@ export const useCompletion = () => {
     currentConversationId: null,
     conversationHistory: [],
   });
+  
   const [micOpen, setMicOpen] = useState(false);
-  const [enableVAD, setEnableVAD] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [messageHistoryOpen, setMessageHistoryOpen] = useState(false);
   const [isFilesPopoverOpen, setIsFilesPopoverOpen] = useState(false);
   const [isScreenshotLoading, setIsScreenshotLoading] = useState(false);
   const [keepEngaged, setKeepEngaged] = useState(false);
+  
   const inputRef = useRef<HTMLInputElement | null>(null);
   const isProcessingScreenshotRef = useRef(false);
   const screenshotConfigRef = useRef(screenshotConfiguration);
@@ -294,6 +302,90 @@ export const useCompletion = () => {
     ]
   );
 
+  // === NATIVE AUDIO RECORDING LOGIC ===
+  const unlistenAudioRef = useRef<any>(null);
+
+  const cleanupAudio = useCallback(async () => {
+    if (unlistenAudioRef.current) {
+      unlistenAudioRef.current();
+      unlistenAudioRef.current = null;
+    }
+    await invoke("stop_system_audio_capture").catch(() => {});
+  }, []);
+
+  const toggleManualRecording = useCallback(async () => {
+    if (isTranscribing) return;
+
+    if (isRecording) {
+      // Manually stop native recording and wait for transcription
+      setIsTranscribing(true);
+      await invoke("manual_stop_continuous").catch(() => {});
+    } else {
+      // Start manual recording
+      try {
+        cleanupAudio();
+        
+        unlistenAudioRef.current = await listen("speech-detected", async (event: any) => {
+          setIsRecording(false);
+          const base64Audio = event.payload as string;
+          
+          const binaryString = atob(base64Audio);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const audioBlob = new Blob([bytes], { type: "audio/wav" });
+
+          try {
+            const usePluelyAPI = await shouldUsePluelyAPI();
+            const provider = allSttProviders.find(p => p.id === selectedSttProvider.provider);
+            const text = await fetchSTT({
+              provider: usePluelyAPI ? undefined : provider,
+              selectedProvider: selectedSttProvider,
+              audio: audioBlob,
+            });
+            if (text) submit(text);
+          } catch (e: any) {
+             console.error(e);
+             setState((prev) => ({ ...prev, error: "Transcription failed." }));
+          } finally {
+             setIsTranscribing(false);
+             cleanupAudio();
+          }
+        });
+
+        await invoke("stop_system_audio_capture").catch(() => {});
+
+        const vadConfig = {
+          enabled: false,  // Hard override to disable VAD
+          max_recording_duration_secs: 180,
+          hop_size: 1024, sensitivity_rms: 0.012, peak_threshold: 0.035, silence_chunks: 45, min_speech_chunks: 7, pre_speech_chunks: 12, noise_gate_threshold: 0.003
+        };
+
+        const deviceId = selectedAudioDevices?.input?.id && selectedAudioDevices.input.id !== "default"
+          ? selectedAudioDevices.input.id
+          : null;
+
+        await invoke("start_system_audio_capture", { vadConfig, deviceId });
+
+        setIsRecording(true);
+      } catch (e) {
+        console.error(e);
+        setState((prev) => ({ ...prev, error: "Failed to start recording." }));
+        cleanupAudio();
+        setIsRecording(false);
+      }
+    }
+  }, [isRecording, isTranscribing, cleanupAudio, selectedAudioDevices, selectedSttProvider, allSttProviders, submit]);
+
+  useEffect(() => {
+    return () => {
+       cleanupAudio();
+    };
+  }, [cleanupAudio]);
+
+  // === GENERAL CHAT ACTIONS ===
+
   const cancel = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -304,10 +396,7 @@ export const useCompletion = () => {
   }, []);
 
   const reset = useCallback(() => {
-    // Don't reset if keep engaged mode is active
-    if (keepEngaged) {
-      return;
-    }
+    if (keepEngaged) return;
     cancel();
     setState((prev) => ({
       ...prev,
@@ -318,7 +407,6 @@ export const useCompletion = () => {
     }));
   }, [cancel, keepEngaged]);
 
-  // Helper function to convert file to base64
   const fileToBase64 = useCallback(async (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -330,9 +418,6 @@ export const useCompletion = () => {
       reader.onerror = reject;
     });
   }, []);
-
-  // Note: saveConversation, getConversationById, and generateConversationTitle
-  // are now imported from lib/database/chat-history.action.ts
 
   const loadConversation = useCallback((conversation: ChatConversation) => {
     setState((prev) => ({
@@ -365,7 +450,6 @@ export const useCompletion = () => {
       assistantResponse: string,
       _attachedFiles: AttachedFile[]
     ) => {
-      // Validate inputs
       if (!userMessage || !assistantResponse) {
         console.error("Cannot save conversation: missing message content");
         return;
@@ -391,7 +475,6 @@ export const useCompletion = () => {
 
       const newMessages = [...state.conversationHistory, userMsg, assistantMsg];
 
-      // Get existing conversation if updating
       let existingConversation = null;
       if (state.currentConversationId) {
         try {
@@ -427,7 +510,6 @@ export const useCompletion = () => {
         }));
       } catch (error) {
         console.error("Failed to save conversation:", error);
-        // Show error to user
         setState((prev) => ({
           ...prev,
           error: "Failed to save conversation. Please try again.",
@@ -437,13 +519,10 @@ export const useCompletion = () => {
     [state.currentConversationId, state.conversationHistory]
   );
 
-  // Listen for conversation events from the main ChatHistory component
+  // Listen for conversation logic sync
   useEffect(() => {
     const handleConversationSelected = async (event: any) => {
-      console.log(event, "event");
-      // Only the conversation ID is passed through the event
       const { id } = event.detail;
-      console.log(id, "id");
       if (!id || typeof id !== "string") {
         console.error("No conversation ID provided");
         setState((prev) => ({
@@ -452,15 +531,11 @@ export const useCompletion = () => {
         }));
         return;
       }
-      console.log(id, "id");
       try {
-        // Fetch the full conversation from SQLite
         const conversation = await getConversationById(id);
-
         if (conversation) {
           loadConversation(conversation);
         } else {
-          console.error(`Conversation ${id} not found in database`);
           setState((prev) => ({
             ...prev,
             error: "Conversation not found. It may have been deleted.",
@@ -481,7 +556,6 @@ export const useCompletion = () => {
 
     const handleConversationDeleted = (event: any) => {
       const deletedId = event.detail;
-      // If the currently active conversation was deleted, start a new one
       if (state.currentConversationId === deletedId) {
         startNewConversation();
       }
@@ -510,23 +584,15 @@ export const useCompletion = () => {
     window.addEventListener("storage", handleStorageChange);
 
     return () => {
-      window.removeEventListener(
-        "conversationSelected",
-        handleConversationSelected
-      );
+      window.removeEventListener("conversationSelected", handleConversationSelected);
       window.removeEventListener("newConversation", handleNewConversation);
-      window.removeEventListener(
-        "conversationDeleted",
-        handleConversationDeleted
-      );
+      window.removeEventListener("conversationDeleted", handleConversationDeleted);
       window.removeEventListener("storage", handleStorageChange);
     };
   }, [loadConversation, startNewConversation, state.currentConversationId]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const MAX_FILES = 6;
-
     files.forEach((file) => {
       if (
         file.type.startsWith("image/") &&
@@ -535,8 +601,6 @@ export const useCompletion = () => {
         addFile(file);
       }
     });
-
-    // Reset input so same file can be selected again
     e.target.value = "";
   };
 
@@ -552,7 +616,6 @@ export const useCompletion = () => {
 
       try {
         if (prompt) {
-          // Auto mode: Submit directly to AI with screenshot
           const attachedFile: AttachedFile = {
             id: Date.now().toString(),
             name: `screenshot_${Date.now()}.png`,
@@ -561,11 +624,9 @@ export const useCompletion = () => {
             size: base64.length,
           };
 
-          // Generate unique request ID
           const requestId = generateRequestId();
           currentRequestIdRef.current = requestId;
 
-          // Cancel any existing request
           if (abortControllerRef.current) {
             abortControllerRef.current.abort();
           }
@@ -574,7 +635,6 @@ export const useCompletion = () => {
           const signal = abortControllerRef.current.signal;
 
           try {
-            // Prepare message history for the AI
             const messageHistory = state.conversationHistory.map((msg) => ({
               role: msg.role,
               content: msg.content,
@@ -583,7 +643,6 @@ export const useCompletion = () => {
             let fullResponse = "";
 
             const usePluelyAPI = await shouldUsePluelyAPI();
-            // Check if AI provider is configured
             if (!selectedAIProvider.provider && !usePluelyAPI) {
               setState((prev) => ({
                 ...prev,
@@ -603,7 +662,6 @@ export const useCompletion = () => {
               return;
             }
 
-            // Clear previous response and set loading state
             setState((prev) => ({
               ...prev,
               input: prompt,
@@ -612,7 +670,6 @@ export const useCompletion = () => {
               response: "",
             }));
 
-            // Use the fetchAIResponse function with image and signal
             for await (const chunk of fetchAIResponse({
               provider: usePluelyAPI ? undefined : provider,
               selectedProvider: selectedAIProvider,
@@ -622,9 +679,8 @@ export const useCompletion = () => {
               imagesBase64: [base64],
               signal,
             })) {
-              // Only update if this is still the current request
               if (currentRequestIdRef.current !== requestId || signal.aborted) {
-                return; // Request was superseded or cancelled
+                return; 
               }
 
               fullResponse += chunk;
@@ -634,31 +690,23 @@ export const useCompletion = () => {
               }));
             }
 
-            // Only proceed if this is still the current request
             if (currentRequestIdRef.current !== requestId || signal.aborted) {
               return;
             }
 
             setState((prev) => ({ ...prev, isLoading: false }));
 
-            // Focus input after screenshot AI response is complete
             setTimeout(() => {
               inputRef.current?.focus();
             }, 100);
 
-            // Save the conversation after successful completion
             if (fullResponse) {
               await saveCurrentConversation(prompt, fullResponse, [
                 attachedFile,
               ]);
-              // Clear input after saving
-              setState((prev) => ({
-                ...prev,
-                input: "",
-              }));
+              setState((prev) => ({ ...prev, input: "" }));
             }
           } catch (e: any) {
-            // Only show error if this is still the current request and not aborted
             if (currentRequestIdRef.current === requestId && !signal.aborted) {
               setState((prev) => ({
                 ...prev,
@@ -666,7 +714,6 @@ export const useCompletion = () => {
               }));
             }
           } finally {
-            // Only update loading state if this is still the current request
             if (currentRequestIdRef.current === requestId && !signal.aborted) {
               setState((prev) => ({ ...prev, isLoading: false }));
             }
@@ -705,7 +752,6 @@ export const useCompletion = () => {
       allAiProviders,
       systemPrompt,
       saveCurrentConversation,
-      inputRef,
     ]
   );
 
@@ -725,7 +771,6 @@ export const useCompletion = () => {
 
   const handlePaste = useCallback(
     async (e: React.ClipboardEvent) => {
-      // Check if clipboard contains images
       const items = e.clipboardData?.items;
       if (!items) return;
 
@@ -733,10 +778,8 @@ export const useCompletion = () => {
         item.type.startsWith("image/")
       );
 
-      // If we have images, prevent default text pasting and process images
       if (hasImages) {
         e.preventDefault();
-
         const processedFiles: File[] = [];
 
         Array.from(items).forEach((item) => {
@@ -751,7 +794,6 @@ export const useCompletion = () => {
           }
         });
 
-        // Process all files
         await Promise.all(processedFiles.map((file) => addFile(file)));
       }
     },
@@ -776,7 +818,6 @@ export const useCompletion = () => {
     isFilesPopoverOpen,
   ]);
 
-  // Auto scroll to bottom when response updates
   useEffect(() => {
     const responseSettings = getResponseSettings();
     if (
@@ -797,7 +838,6 @@ export const useCompletion = () => {
     }
   }, [state.response, keepEngaged]);
 
-  // Keyboard arrow key support for scrolling
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isPopoverOpen) return;
@@ -809,7 +849,7 @@ export const useCompletion = () => {
 
       if (!scrollElement) return;
 
-      const scrollAmount = 100; // pixels to scroll
+      const scrollAmount = 100;
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -824,17 +864,13 @@ export const useCompletion = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isPopoverOpen, scrollAreaRef]);
 
-  // Keyboard shortcut for toggling keep engaged mode (Cmd+K / Ctrl+K)
   useEffect(() => {
     const handleToggleShortcut = (e: KeyboardEvent) => {
-      // Only trigger when popover is open
       if (!isPopoverOpen) return;
 
-      // Check for Cmd+K (Mac) or Ctrl+K (Windows/Linux)
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setKeepEngaged((prev) => !prev);
-        // Focus the input after toggle (with delay to ensure DOM is ready)
         setTimeout(() => {
           inputRef.current?.focus();
         }, 100);
@@ -853,7 +889,6 @@ export const useCompletion = () => {
     setIsScreenshotLoading(true);
 
     try {
-      // Check screen recording permission on macOS
       const platform = navigator.platform.toLowerCase();
       if (platform.includes("mac") && !hasCheckedPermissionRef.current) {
         const {
@@ -864,19 +899,15 @@ export const useCompletion = () => {
         const hasPermission = await checkScreenRecordingPermission();
 
         if (!hasPermission) {
-          // Request permission
           await requestScreenRecordingPermission();
-
-          // Wait a moment and check again
           await new Promise((resolve) => setTimeout(resolve, 2000));
-
           const hasPermissionNow = await checkScreenRecordingPermission();
 
           if (!hasPermissionNow) {
             setState((prev) => ({
               ...prev,
               error:
-                "Screen Recording permission required. Please enable it by going to System Settings > Privacy & Security > Screen & System Audio Recording. If you don't see Pluely in the list, click the '+' button to add it. If it's already listed, make sure it's enabled. Then restart the app.",
+                "Screen Recording permission required. Please enable it in System Settings > Privacy & Security.",
             }));
             setIsScreenshotLoading(false);
             screenshotInitiatedByThisContext.current = false;
@@ -890,15 +921,13 @@ export const useCompletion = () => {
         const base64 = await invoke("capture_to_base64");
 
         if (config.mode === "auto") {
-          // Auto mode: Submit directly to AI with the configured prompt
           await handleScreenshotSubmit(base64 as string, config.autoPrompt);
         } else if (config.mode === "manual") {
-          // Manual mode: Add to attached files without prompt
           await handleScreenshotSubmit(base64 as string);
         }
         screenshotInitiatedByThisContext.current = false;
       } else {
-        // Selection Mode: Open overlay to select an area
+        // Selection Mode
         isProcessingScreenshotRef.current = false;
         await invoke("start_screen_capture");
       }
@@ -935,10 +964,8 @@ export const useCompletion = () => {
 
         try {
           if (config.mode === "auto") {
-            // Auto mode: Submit directly to AI with the configured prompt
             await handleScreenshotSubmit(base64 as string, config.autoPrompt);
           } else if (config.mode === "manual") {
-            // Manual mode: Add to attached files without prompt
             await handleScreenshotSubmit(base64 as string);
           }
         } catch (error) {
@@ -974,12 +1001,6 @@ export const useCompletion = () => {
     };
   }, []);
 
-  const toggleRecording = useCallback(() => {
-    setEnableVAD(!enableVAD);
-    setMicOpen(!micOpen);
-  }, [enableVAD, micOpen]);
-
-  // Cleanup abort controller on unmount
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
@@ -990,18 +1011,17 @@ export const useCompletion = () => {
     };
   }, []);
 
-  // register callbacks for global shortcuts
+  // Global Shortcuts Binding
   useEffect(() => {
-    globalShortcuts.registerAudioCallback(toggleRecording);
-    globalShortcuts.registerInputRef(inputRef.current);
+    globalShortcuts.registerAudioCallback(toggleManualRecording);
+    globalShortcuts.registerInputRef(inputRef.current as any);
     globalShortcuts.registerScreenshotCallback(captureScreenshot);
   }, [
     globalShortcuts.registerAudioCallback,
     globalShortcuts.registerInputRef,
     globalShortcuts.registerScreenshotCallback,
-    toggleRecording,
+    toggleManualRecording,
     captureScreenshot,
-    inputRef,
   ]);
 
   return {
@@ -1019,8 +1039,10 @@ export const useCompletion = () => {
     cancel,
     reset,
     setState,
-    enableVAD,
-    setEnableVAD,
+    isRecording,
+    setIsRecording,
+    isTranscribing,
+    toggleManualRecording,
     micOpen,
     setMicOpen,
     currentConversationId: state.currentConversationId,

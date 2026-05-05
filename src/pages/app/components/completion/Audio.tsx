@@ -1,50 +1,47 @@
-import { InfoIcon, MicIcon } from "lucide-react";
+import { InfoIcon, MicIcon, LoaderCircleIcon, SquareIcon } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger, Button } from "@/components";
-import { AutoSpeechVAD } from "./AutoSpeechVad";
 import { UseCompletionReturn } from "@/types";
 import { useApp } from "@/contexts";
 
 export const Audio = ({
   micOpen,
   setMicOpen,
-  enableVAD,
-  setEnableVAD,
-  submit,
-  setState,
+  isRecording,
+  isTranscribing,
+  toggleManualRecording,
 }: UseCompletionReturn) => {
-  const { selectedSttProvider, pluelyApiEnabled, selectedAudioDevices } =
-    useApp();
+  const { selectedSttProvider, pluelyApiEnabled } = useApp();
 
   const speechProviderStatus = selectedSttProvider.provider;
   const isProviderConfigured = pluelyApiEnabled || !!speechProviderStatus;
 
-  // IF CONFIGURED: Return the normal button without any Popover interference!
   if (isProviderConfigured) {
-    if (enableVAD) {
+    if (isTranscribing) {
       return (
-        <AutoSpeechVAD
-          key={selectedAudioDevices.input.id}
-          submit={submit}
-          setState={setState}
-          setEnableVAD={setEnableVAD}
-          microphoneDeviceId={selectedAudioDevices.input.id}
-        />
+        <Button size="icon" disabled variant="outline" className="cursor-not-allowed">
+          <LoaderCircleIcon className="h-4 w-4 animate-spin text-green-500" />
+        </Button>
       );
     }
 
     return (
       <Button
         size="icon"
-        onClick={() => setEnableVAD(true)}
-        className="cursor-pointer"
-        title="Toggle voice input"
+        onClick={toggleManualRecording}
+        variant={isRecording ? "default" : "ghost"}
+        className="cursor-pointer transition-all"
+        title={isRecording ? "Stop recording & process" : "Start manual recording"}
       >
-        <MicIcon className="h-4 w-4" />
+        {isRecording ? (
+          <SquareIcon className="h-3 w-3 fill-red-500 text-red-500 animate-pulse" />
+        ) : (
+          <MicIcon className="h-4 w-4" />
+        )}
       </Button>
     );
   }
 
-  // IF NOT CONFIGURED: Return the Popover warning
+  // Not Configured Warning
   return (
     <Popover open={micOpen} onOpenChange={setMicOpen}>
       <PopoverTrigger asChild>
@@ -59,8 +56,8 @@ export const Audio = ({
       </PopoverTrigger>
 
       <PopoverContent
-        align="end"
-        side="bottom"
+        align="center"
+        side="top"
         className="w-80 p-3"
         sideOffset={8}
       >

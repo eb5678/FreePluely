@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { useTitles, useSystemAudio } from "@/hooks";
+import { useTitles } from "@/hooks";
 import { listen } from "@tauri-apps/api/event";
 import { safeLocalStorage, migrateLocalStorageToSQLite } from "@/lib";
 import { getShortcutsConfig } from "@/lib/storage";
 import { invoke } from "@tauri-apps/api/core";
 
 export const useApp = () => {
-  const systemAudio = useSystemAudio();
   const [isHidden, setIsHidden] = useState(false);
+  
   // Initialize title management
   useTitles();
 
@@ -29,13 +29,12 @@ export const useApp = () => {
   useEffect(() => {
     const runMigration = async () => {
       try {
-        // Early exit: Check if migration already completed
         const migrationKey = "chat_history_migrated_to_sqlite";
         const alreadyMigrated =
           safeLocalStorage.getItem(migrationKey) === "true";
 
         if (alreadyMigrated) {
-          return; // Migration already complete, skip
+          return;
         }
 
         const result = await migrateLocalStorageToSQLite();
@@ -47,11 +46,9 @@ export const useApp = () => {
             );
           }
         } else if (result.error) {
-          // Migration failed - log error
           console.error("Migration error:", result.error);
         }
       } catch (error) {
-        // Critical error during migration
         console.error("Critical migration failure:", error);
       }
     };
@@ -59,7 +56,6 @@ export const useApp = () => {
   }, []);
 
   const handleSelectConversation = (conversation: any) => {
-    // useCompletion will fetch the full conversation from SQLite by id
     window.dispatchEvent(
       new CustomEvent("conversationSelected", {
         detail: { id: conversation.id },
@@ -68,7 +64,6 @@ export const useApp = () => {
   };
 
   const handleNewConversation = () => {
-    // Trigger new conversation event
     window.dispatchEvent(new CustomEvent("newConversation"));
   };
 
@@ -80,15 +75,11 @@ export const useApp = () => {
         const platform = navigator.platform.toLowerCase();
         if (typeof event.payload === "boolean" && platform.includes("win")) {
           setIsHidden(!event.payload);
-          // find popover open and close it
           const popover = document.getElementById("popover-content");
-          // set display to none, change data-state to closed
           if (popover) {
             popover.style.setProperty("display", "none", "important");
-            // update the data-state to closed
             popover.setAttribute("data-state", "closed");
 
-            // Also find and update the popover trigger's data-state
             const popoverTriggers = document.querySelectorAll(
               '[data-slot="popover-trigger"]'
             );
@@ -152,6 +143,5 @@ export const useApp = () => {
     setIsHidden,
     handleSelectConversation,
     handleNewConversation,
-    systemAudio,
   };
 };
