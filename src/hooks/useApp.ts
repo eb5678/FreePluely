@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+// src/hooks/useApp.ts
+import { useEffect, useState, useRef } from "react";
 import { useTitles } from "@/hooks";
 import { listen } from "@tauri-apps/api/event";
 import { safeLocalStorage, migrateLocalStorageToSQLite } from "@/lib";
@@ -8,11 +9,17 @@ import { invoke } from "@tauri-apps/api/core";
 export const useApp = () => {
   const [isHidden, setIsHidden] = useState(false);
   
-  // Initialize title management
+  // Track initialization to prevent terminal spam in Strict Mode
+  const shortcutsInitialized = useRef(false);
+  const migrationInitialized = useRef(false);
+  
   useTitles();
 
-  // Initialize shortcuts from localStorage on app startup
+  // Initialize shortcuts cleanly 
   useEffect(() => {
+    if (shortcutsInitialized.current) return;
+    shortcutsInitialized.current = true;
+
     const initializeShortcuts = async () => {
       try {
         const config = getShortcutsConfig();
@@ -25,25 +32,23 @@ export const useApp = () => {
     initializeShortcuts();
   }, []);
 
-  // Migrate localStorage chat history to SQLite on app startup
+  // Migrate localStorage chat history cleanly
   useEffect(() => {
+    if (migrationInitialized.current) return;
+    migrationInitialized.current = true;
+
     const runMigration = async () => {
       try {
         const migrationKey = "chat_history_migrated_to_sqlite";
-        const alreadyMigrated =
-          safeLocalStorage.getItem(migrationKey) === "true";
+        const alreadyMigrated = safeLocalStorage.getItem(migrationKey) === "true";
 
-        if (alreadyMigrated) {
-          return;
-        }
+        if (alreadyMigrated) return;
 
         const result = await migrateLocalStorageToSQLite();
 
         if (result.success) {
           if (result.migratedCount > 0) {
-            console.log(
-              `Successfully migrated ${result.migratedCount} conversations to SQLite`
-            );
+            console.log(`Successfully migrated ${result.migratedCount} conversations to SQLite`);
           }
         } else if (result.error) {
           console.error("Migration error:", result.error);
@@ -57,9 +62,7 @@ export const useApp = () => {
 
   const handleSelectConversation = (conversation: any) => {
     window.dispatchEvent(
-      new CustomEvent("conversationSelected", {
-        detail: { id: conversation.id },
-      })
+      new CustomEvent("conversationSelected", { detail: { id: conversation.id } })
     );
   };
 
@@ -67,7 +70,6 @@ export const useApp = () => {
     window.dispatchEvent(new CustomEvent("newConversation"));
   };
 
-  // WINDOWS HIDE/SHOW TOGGLE WINDOW WORKAROUND FOR SHORTCUTS
   useEffect(() => {
     const unlistenPromise = listen<boolean>(
       "toggle-window-visibility",
@@ -100,41 +102,21 @@ export const useApp = () => {
     const handleShortcutRegistrationError = (
       event: Event | CustomEvent<Array<[string, string, string]>>
     ) => {
-      const detail =
-        (event as CustomEvent<Array<[string, string, string]>>)?.detail ?? [];
-
-      if (!detail.length) {
-        return;
-      }
+      const detail = (event as CustomEvent<Array<[string, string, string]>>)?.detail ?? [];
+      if (!detail.length) return;
 
       const formatted = detail
         .map(([action, key, error]) => ({ action, key, error }))
         .filter(({ action, key }) => action && key);
 
-      if (!formatted.length) {
-        return;
-      }
+      if (!formatted.length) return;
 
-      console.warn(
-        "Some shortcuts could not be registered:",
-        formatted.map(({ action, key, error }) => ({
-          action,
-          key,
-          error,
-        }))
-      );
+      console.warn("Some shortcuts could not be registered:", formatted);
     };
 
-    window.addEventListener(
-      "shortcutRegistrationError",
-      handleShortcutRegistrationError as EventListener
-    );
-
+    window.addEventListener("shortcutRegistrationError", handleShortcutRegistrationError as EventListener);
     return () => {
-      window.removeEventListener(
-        "shortcutRegistrationError",
-        handleShortcutRegistrationError as EventListener
-      );
+      window.removeEventListener("shortcutRegistrationError", handleShortcutRegistrationError as EventListener);
     };
   }, []);
 

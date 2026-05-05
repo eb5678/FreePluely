@@ -1,22 +1,12 @@
+// src/hooks/useGlobalShortcuts.ts
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef } from "react";
-import { getShortcutsConfig } from "@/lib";
+import { getShortcutsConfig, getPlatform } from "@/lib";
 
-// Global singleton to prevent multiple event listeners in StrictMode
-let globalEventListeners: {
-  focus?: UnlistenFn;
-  audio?: UnlistenFn;
-  screenshot?: UnlistenFn;
-  systemAudio?: UnlistenFn;
-  customShortcut?: UnlistenFn;
-  registrationError?: UnlistenFn;
-} = {};
-
-// Global debounce for screenshot events to prevent duplicates
+let globalEventListeners: { [key: string]: UnlistenFn | undefined } = {};
 let lastScreenshotEventTime = 0;
 
-// Global callback refs
 let globalInputRef: HTMLInputElement | null = null;
 let globalAudioCallback: (() => void) | null = null;
 let globalScreenshotCallback: (() => void | Promise<void>) | null = null;
@@ -30,27 +20,19 @@ export const useGlobalShortcuts = () => {
   const systemAudioCallbackRef = useRef<(() => void) | null>(null);
   const customShortcutCallbacksRef = useRef<Map<string, () => void>>(new Map());
 
+  // ... (keep the checkShortcutsRegistered, getShortcuts, updateShortcuts callbacks unchanged)
   const checkShortcutsRegistered = useCallback(async (): Promise<boolean> => {
     try {
-      const registered = await invoke<boolean>("check_shortcuts_registered");
-      return registered;
-    } catch (error) {
-      console.error("Failed to check shortcuts:", error);
+      return await invoke<boolean>("check_shortcuts_registered");
+    } catch (e) {
       return false;
     }
   }, []);
 
-  const getShortcuts = useCallback(async (): Promise<Record<
-    string,
-    string
-  > | null> => {
+  const getShortcuts = useCallback(async (): Promise<Record<string, string> | null> => {
     try {
-      const shortcuts = await invoke<Record<string, string>>(
-        "get_registered_shortcuts"
-      );
-      return shortcuts;
-    } catch (error) {
-      console.error("Failed to get shortcuts:", error);
+      return await invoke<Record<string, string>>("get_registered_shortcuts");
+    } catch (e) {
       return null;
     }
   }, []);
@@ -60,199 +42,141 @@ export const useGlobalShortcuts = () => {
       const config = getShortcutsConfig();
       await invoke("update_shortcuts", { config });
       return true;
-    } catch (error) {
-      console.error("Failed to update shortcuts:", error);
+    } catch (e) {
       return false;
     }
   }, []);
 
-  // Register input element for auto-focus
   const registerInputRef = useCallback((input: HTMLInputElement | null) => {
     inputRef.current = input;
     globalInputRef = input;
   }, []);
 
-  // Register audio callback
   const registerAudioCallback = useCallback((callback: () => void) => {
     audioCallbackRef.current = callback;
     globalAudioCallback = callback;
   }, []);
 
-  // Register screenshot callback
-  const registerScreenshotCallback = useCallback(
-    (callback: () => void | Promise<void>) => {
-      screenshotCallbackRef.current = callback;
-      globalScreenshotCallback = callback;
-    },
-    []
-  );
+  const registerScreenshotCallback = useCallback((callback: () => void | Promise<void>) => {
+    screenshotCallbackRef.current = callback;
+    globalScreenshotCallback = callback;
+  }, []);
 
-  // Register system audio callback
   const registerSystemAudioCallback = useCallback((callback: () => void) => {
     systemAudioCallbackRef.current = callback;
     globalSystemAudioCallback = callback;
   }, []);
 
-  // Register custom shortcut callback
-  const registerCustomShortcutCallback = useCallback(
-    (actionId: string, callback: () => void) => {
-      customShortcutCallbacksRef.current.set(actionId, callback);
-      globalCustomShortcutCallbacks.set(actionId, callback);
-    },
-    []
-  );
+  const registerCustomShortcutCallback = useCallback((actionId: string, callback: () => void) => {
+    customShortcutCallbacksRef.current.set(actionId, callback);
+    globalCustomShortcutCallbacks.set(actionId, callback);
+  }, []);
 
-  // Unregister custom shortcut callback
   const unregisterCustomShortcutCallback = useCallback((actionId: string) => {
     customShortcutCallbacksRef.current.delete(actionId);
     globalCustomShortcutCallbacks.delete(actionId);
   }, []);
 
-  // Setup event listeners using global singleton
+  // 1. GUI TAURI LISTENERS
   useEffect(() => {
     const setupEventListeners = async () => {
       try {
-        // Clean up any existing global listeners first
-        if (globalEventListeners.focus) {
-          try {
-            globalEventListeners.focus();
-          } catch (error) {
-            console.warn("Error cleaning up focus listener:", error);
-          }
-        }
-        if (globalEventListeners.audio) {
-          try {
-            globalEventListeners.audio();
-          } catch (error) {
-            console.warn("Error cleaning up audio listener:", error);
-          }
-        }
-        if (globalEventListeners.screenshot) {
-          try {
-            globalEventListeners.screenshot();
-          } catch (error) {
-            console.warn("Error cleaning up screenshot listener:", error);
-          }
-        }
-        if (globalEventListeners.systemAudio) {
-          try {
-            globalEventListeners.systemAudio();
-          } catch (error) {
-            console.warn("Error cleaning up system audio listener:", error);
-          }
-        }
-        if (globalEventListeners.customShortcut) {
-          try {
-            globalEventListeners.customShortcut();
-          } catch (error) {
-            console.warn("Error cleaning up custom shortcut listener:", error);
-          }
-        }
-        if (globalEventListeners.registrationError) {
-          try {
-            globalEventListeners.registrationError();
-          } catch (error) {
-            console.warn(
-              "Error cleaning up shortcut registration error listener:",
-              error
-            );
-          }
-        }
+        Object.values(globalEventListeners).forEach(unlisten => unlisten && unlisten());
 
-        // Listen for focus text input event
-        const unlistenFocus = await listen("focus-text-input", () => {
-          setTimeout(() => {
-            if (globalInputRef) {
-              globalInputRef.focus();
-            }
-          }, 100);
+        globalEventListeners.focus = await listen("focus-text-input", () => {
+          setTimeout(() => globalInputRef?.focus(), 100);
         });
-        globalEventListeners.focus = unlistenFocus;
 
-        // Listen for audio recording event
-        const unlistenAudio = await listen("start-audio-recording", () => {
-          if (globalAudioCallback) {
-            globalAudioCallback();
-          }
+        globalEventListeners.audio = await listen("start-audio-recording", () => {
+          if (globalAudioCallback) globalAudioCallback();
         });
-        globalEventListeners.audio = unlistenAudio;
 
-        // Listen for screenshot trigger event with debouncing
-        const unlistenScreenshot = await listen("trigger-screenshot", () => {
+        globalEventListeners.screenshot = await listen("trigger-screenshot", () => {
           const now = Date.now();
-          const timeSinceLastEvent = now - lastScreenshotEventTime;
-
-          // Debounce screenshot events (300ms minimum interval)
-          if (timeSinceLastEvent < 300) {
-            return;
-          }
-
+          if (now - lastScreenshotEventTime < 300) return;
           lastScreenshotEventTime = now;
-
           if (globalScreenshotCallback) {
-            try {
-              Promise.resolve(globalScreenshotCallback())
-                .catch((error) => {
-                  console.error("Screenshot shortcut callback failed:", error);
-                })
-                .then(() => {
-                  // no-op
-                });
-            } catch (error) {
-              console.error(
-                "Failed to run screenshot shortcut callback:",
-                error
-              );
-            }
-          } else {
-            console.warn(
-              "Screenshot shortcut triggered but no callback registered."
-            );
+            Promise.resolve(globalScreenshotCallback()).catch(console.error);
           }
         });
-        globalEventListeners.screenshot = unlistenScreenshot;
 
-        // Listen for system audio toggle event
-        const unlistenSystemAudio = await listen("toggle-system-audio", () => {
-          if (globalSystemAudioCallback) {
-            globalSystemAudioCallback();
-          }
+        globalEventListeners.systemAudio = await listen("toggle-system-audio", () => {
+          if (globalSystemAudioCallback) globalSystemAudioCallback();
         });
-        globalEventListeners.systemAudio = unlistenSystemAudio;
 
-        // Listen for custom shortcut events
-        const unlistenCustomShortcut = await listen<{ action: string }>(
+        globalEventListeners.customShortcut = await listen<{ action: string }>(
           "custom-shortcut-triggered",
           (event) => {
-            const actionId = event.payload.action;
-            const callback = globalCustomShortcutCallbacks.get(actionId);
-            if (callback) {
-              callback();
-            } else {
-              console.warn(
-                `No callback registered for custom shortcut: ${actionId}`
-              );
-            }
+            const cb = globalCustomShortcutCallbacks.get(event.payload.action);
+            if (cb) cb();
           }
         );
-        globalEventListeners.customShortcut = unlistenCustomShortcut;
 
-        const unlistenRegistrationError = await listen<
-          Array<[string, string, string]>
-        >("shortcut-registration-error", (event) => {
-          window.dispatchEvent(
-            new CustomEvent("shortcutRegistrationError", {
-              detail: event.payload,
-            })
-          );
-        });
-        globalEventListeners.registrationError = unlistenRegistrationError;
+        globalEventListeners.registrationError = await listen<Array<[string, string, string]>>(
+          "shortcut-registration-error",
+          (event) => {
+            window.dispatchEvent(new CustomEvent("shortcutRegistrationError", { detail: event.payload }));
+          }
+        );
       } catch (error) {
         console.error("Failed to setup event listeners:", error);
       }
     };
-
     setupEventListeners();
+  }, []);
+
+  // 2. NATIVE DOM KEYDOWN FALLBACK (Fixes Wayland & Blocks Inspector)
+  useEffect(() => {
+    const handleLocalKeyDown = (e: KeyboardEvent) => {
+      // Ignore raw modifier keypresses without characters
+      if (["Control", "Shift", "Alt", "Meta", "Super", "Escape"].includes(e.key)) return;
+      const keys: string[] = [];
+      const platform = getPlatform();
+      if (e.metaKey) keys.push(platform === "macos" ? "cmd" : "super");
+      if (e.ctrlKey) keys.push("ctrl");
+      if (e.altKey) keys.push("alt");
+      if (e.shiftKey) keys.push("shift");
+      let mainKey = e.key.toLowerCase();
+      const specialMap: Record<string, string> = {
+        arrowup: "up", arrowdown: "down", arrowleft: "left", arrowright: "right",
+        " ": "space", escape: "esc", enter: "return", "\\": "backslash"
+      };
+      if (mainKey && specialMap[mainKey]) mainKey = specialMap[mainKey];
+      if (mainKey) keys.push(mainKey);
+      const pressedCombo = Array.from(new Set(keys)).join("+"); // deduplicate
+      const config = getShortcutsConfig();
+      for (const [actionId, binding] of Object.entries(config.bindings)) {
+        if (binding.enabled && binding.key === pressedCombo) {
+          e.preventDefault(); // STOP native webkit bindings
+          e.stopPropagation();
+          // Execute action based on the map
+          switch (actionId) {
+            case "audio_recording":
+              if (globalAudioCallback) globalAudioCallback();
+              break;
+            case "screenshot":
+              if (globalScreenshotCallback) Promise.resolve(globalScreenshotCallback()).catch(console.error);
+              break;
+            case "focus_input":
+              setTimeout(() => globalInputRef?.focus(), 50);
+              break;
+            case "toggle_dashboard":
+              invoke("toggle_dashboard").catch(console.error);
+              break;
+            case "toggle_window":
+              invoke("toggle_window").catch(console.error);
+              break;
+            default:
+              const cb = globalCustomShortcutCallbacks.get(actionId);
+              if (cb) cb();
+          }
+          return;
+        }
+      }
+    };
+    // Use capturing phase (true) to intercept the event BEFORE the browser does
+    window.addEventListener("keydown", handleLocalKeyDown, true);
+    return () => window.removeEventListener("keydown", handleLocalKeyDown, true);
   }, []);
 
   return {

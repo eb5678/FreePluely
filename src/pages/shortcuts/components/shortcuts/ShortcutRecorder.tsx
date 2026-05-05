@@ -1,12 +1,12 @@
+// src/pages/shortcuts/components/shortcuts/ShortcutRecorder.tsx
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components";
 import { Check, X } from "lucide-react";
 import {
-  isMacOS,
+  getPlatform,
   validateShortcutKey,
   formatShortcutKeyForDisplay,
 } from "@/lib";
-import { invoke } from "@tauri-apps/api/core";
 
 interface ShortcutRecorderProps {
   onSave: (key: string) => void;
@@ -23,7 +23,7 @@ export const ShortcutRecorder = ({
 }: ShortcutRecorderProps) => {
   const [recordedKeys, setRecordedKeys] = useState<string[]>([]);
   const [error, setError] = useState<string>("");
-  const isRecording = true; // Always recording
+  const isRecording = true; 
   const isMoveWindow = actionId === "move_window";
   const minKeys = isMoveWindow ? 1 : 2;
 
@@ -35,92 +35,72 @@ export const ShortcutRecorder = ({
       e.stopPropagation();
 
       const keys: string[] = [];
+      const platform = getPlatform();
 
-      // Add modifiers
-      if (e.metaKey || e.ctrlKey) {
-        keys.push(isMacOS() ? "cmd" : "ctrl");
+      // FIXED: Proper modifier extraction
+      if (e.metaKey || e.getModifierState("Meta") || e.getModifierState("Super")) {
+        keys.push(platform === "macos" ? "cmd" : "super");
       }
+      if (e.ctrlKey) keys.push("ctrl");
       if (e.altKey) keys.push("alt");
       if (e.shiftKey) keys.push("shift");
 
-      // Handle special keys properly
       let mainKey = e.key.toLowerCase();
 
-      // Map special keys to Tauri format
+      // Filter out raw modifier presses
+      if (["control", "alt", "shift", "meta", "os", "super", "command"].includes(mainKey)) {
+        mainKey = "";
+      }
+
       const specialKeyMap: Record<string, string> = {
-        arrowup: "up",
-        arrowdown: "down",
-        arrowleft: "left",
-        arrowright: "right",
-        " ": "space",
-        escape: "esc",
-        enter: "return",
-        backspace: "backspace",
-        delete: "delete",
-        tab: "tab",
-        "[": "bracketleft",
-        "]": "bracketright",
-        ";": "semicolon",
-        "'": "quote",
-        "`": "grave",
-        "\\": "backslash",
-        "/": "slash",
-        ",": "comma",
-        ".": "period",
-        "-": "minus",
-        "=": "equal",
-        "+": "plus",
+        arrowup: "up", arrowdown: "down", arrowleft: "left", arrowright: "right",
+        " ": "space", escape: "esc", enter: "return", backspace: "backspace",
+        delete: "delete", tab: "tab", "[": "bracketleft", "]": "bracketright",
+        ";": "semicolon", "'": "quote", "`": "grave", "\\": "backslash",
+        "/": "slash", ",": "comma", ".": "period", "-": "minus", "=": "equal", "+": "plus",
       };
 
-      if (specialKeyMap[mainKey]) {
+      if (mainKey && specialKeyMap[mainKey]) {
         mainKey = specialKeyMap[mainKey];
       }
 
+      if (mainKey) keys.push(mainKey);
+
       if (isMoveWindow) {
         if (["up", "down", "left", "right"].includes(mainKey)) {
-          setError(
-            "Arrow keys are automatic for Move Window. Only set modifiers."
-          );
+          setError("Arrow keys are automatic. Only set modifiers.");
           return;
         }
         if (keys.length >= 1) {
           setRecordedKeys(keys);
           setError("");
         } else {
-          setError("Must include at least one modifier (Cmd/Ctrl/Alt/Shift)");
+          setError("Must include at least one modifier");
         }
       } else {
-        if (!["control", "alt", "shift", "meta"].includes(mainKey)) {
-          keys.push(mainKey);
-        }
-
-        if (keys.length >= 2) {
+        const hasModifier = keys.some(k => ["super", "cmd", "ctrl", "alt", "shift"].includes(k));
+        
+        if (hasModifier && mainKey) {
           setRecordedKeys(keys);
           setError("");
         } else {
-          setError(
-            "Must include at least one modifier (Cmd/Ctrl/Alt/Shift) and one key"
-          );
+          setError("Must include at least one modifier and one key");
         }
       }
     },
     [isRecording, isMoveWindow]
   );
-
-  const handleKeyUp = useCallback(
-    (e: KeyboardEvent) => {
-      if (!isRecording) return;
-      e.preventDefault();
-      e.stopPropagation();
-    },
-    [isRecording]
-  );
+  
+  // ... (keep handleKeyUp, handleSave, handleCancel & UI portion identical)
+  const handleKeyUp = useCallback((e: KeyboardEvent) => {
+    if (!isRecording) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, [isRecording]);
 
   useEffect(() => {
     if (isRecording) {
-      // Focus the window to ensure key events are captured
       window.focus();
-
       window.addEventListener("keydown", handleKeyDown, true);
       window.addEventListener("keyup", handleKeyUp, true);
 
@@ -143,30 +123,12 @@ export const ShortcutRecorder = ({
 
     const shortcutKey = recordedKeys.join("+");
 
-    // For move_window, skip validation as we'll add arrow keys in the backend
     if (!isMoveWindow) {
-      // Validate with frontend
       if (!validateShortcutKey(shortcutKey)) {
         setError("Invalid shortcut combination");
         return;
       }
-
-      // Validate with backend
-      try {
-        const isValid = await invoke<boolean>("validate_shortcut_key", {
-          key: shortcutKey,
-        });
-
-        if (!isValid) {
-          setError("This shortcut combination is not supported");
-          return;
-        }
-      } catch (e) {
-        setError("Failed to validate shortcut");
-        return;
-      }
     }
-
     onSave(shortcutKey);
   };
 
@@ -219,15 +181,13 @@ export const ShortcutRecorder = ({
       </div>
 
       {error && <p className="text-xs text-destructive">{error}</p>}
-
       {isRecording && !error && (
         <p className="text-xs text-muted-foreground">
           {isMoveWindow
-            ? "Press modifier keys (e.g., Cmd+Shift). Arrow keys work automatically."
-            : "Press a key combination now (e.g., Cmd+Shift+K)"}
+            ? "Press modifier keys (e.g., Super+Shift). Arrow keys work automatically."
+            : "Press a key combination now (e.g., Super+Shift+A)"}
         </p>
       )}
-
       {recordedKeys.length >= minKeys && !error && (
         <p className="text-xs text-green-600">
           ✓ Shortcut captured! Click "Save" to apply.

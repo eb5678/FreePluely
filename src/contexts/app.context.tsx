@@ -160,9 +160,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         await invoke("set_license_status", {
           hasLicense: hasActiveLicense,
         });
-
-        const config = getShortcutsConfig();
-        await invoke("update_shortcuts", { config });
       } catch (error) {
         console.error("Failed to synchronize license state:", error);
       }

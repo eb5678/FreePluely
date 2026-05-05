@@ -302,29 +302,40 @@ export const useCompletion = () => {
     ]
   );
 
-  // === NATIVE AUDIO RECORDING LOGIC ===
+  // === NATIVE MANUAL RECORDING LOGIC ===
   const unlistenAudioRef = useRef<any>(null);
+  const unlistenErrorRef = useRef<any>(null);
+  const isMicBusyRef = useRef<boolean>(false);
 
   const cleanupAudio = useCallback(async () => {
     if (unlistenAudioRef.current) {
       unlistenAudioRef.current();
       unlistenAudioRef.current = null;
     }
+    if (unlistenErrorRef.current) {
+      unlistenErrorRef.current();
+      unlistenErrorRef.current = null;
+    }
     await invoke("stop_system_audio_capture").catch(() => {});
   }, []);
 
   const toggleManualRecording = useCallback(async () => {
-    if (isTranscribing) return;
+    // 1. HARD LOCK: Prevent rapid double-clicks from corrupting the stream
+    if (isTranscribing || isMicBusyRef.current) return;
+    
+    isMicBusyRef.current = true;
 
     if (isRecording) {
-      // Manually stop native recording and wait for transcription
+      // User clicked STOP
       setIsTranscribing(true);
       await invoke("manual_stop_continuous").catch(() => {});
+      // Do not unlock isMicBusyRef here; let the listeners handle the unlock below
     } else {
-      // Start manual recording
+      // User clicked START
       try {
-        cleanupAudio();
+        await cleanupAudio();
         
+        // Listener A: Capture Success payload
         unlistenAudioRef.current = await listen("speech-detected", async (event: any) => {
           setIsRecording(false);
           const base64Audio = event.payload as string;
@@ -346,18 +357,31 @@ export const useCompletion = () => {
             });
             if (text) submit(text);
           } catch (e: any) {
-             console.error(e);
-             setState((prev) => ({ ...prev, error: "Transcription failed." }));
+             console.error("STT Conversion Error:", e);
+             setState((prev: any) => ({ ...prev, error: "Transcription failed." }));
           } finally {
              setIsTranscribing(false);
-             cleanupAudio();
+             isMicBusyRef.current = false;
+             await cleanupAudio();
           }
         });
 
+        // Listener B: Capture Error payload (e.g. empty audio from rapid clicking)
+        unlistenErrorRef.current = await listen("audio-encoding-error", (event: any) => {
+          console.warn("Audio processing aborted (too short or empty):", event.payload);
+          // Failsafe reset!
+          setIsTranscribing(false);
+          setIsRecording(false);
+          isMicBusyRef.current = false;
+          cleanupAudio();
+        });
+
+        // Kill pre-existing streams just in case
         await invoke("stop_system_audio_capture").catch(() => {});
 
+        // Pass 'false' to enabled so it acts in manual mode
         const vadConfig = {
-          enabled: false,  // Hard override to disable VAD
+          enabled: false, 
           max_recording_duration_secs: 180,
           hop_size: 1024, sensitivity_rms: 0.012, peak_threshold: 0.035, silence_chunks: 45, min_speech_chunks: 7, pre_speech_chunks: 12, noise_gate_threshold: 0.003
         };
@@ -369,14 +393,18 @@ export const useCompletion = () => {
         await invoke("start_system_audio_capture", { vadConfig, deviceId });
 
         setIsRecording(true);
+        // Add a tiny buffer before allowing them to click stop again
+        setTimeout(() => { isMicBusyRef.current = false; }, 300);
+        
       } catch (e) {
         console.error(e);
-        setState((prev) => ({ ...prev, error: "Failed to start recording." }));
-        cleanupAudio();
+        setState((prev: any) => ({ ...prev, error: "Failed to start recording." }));
+        await cleanupAudio();
         setIsRecording(false);
+        isMicBusyRef.current = false;
       }
     }
-  }, [isRecording, isTranscribing, cleanupAudio, selectedAudioDevices, selectedSttProvider, allSttProviders, submit]);
+  }, [isRecording, isTranscribing, cleanupAudio, selectedSttProvider, allSttProviders, selectedAudioDevices, submit]);
 
   useEffect(() => {
     return () => {

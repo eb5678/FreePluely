@@ -42,19 +42,9 @@ export const DEFAULT_SHORTCUT_ACTIONS: ShortcutAction[] = [
     },
   },
   {
-    id: "system_audio",
-    name: "System Audio",
-    description: "Toggle system audio capture",
-    defaultKey: {
-      macos: "cmd+shift+m",
-      windows: "ctrl+shift+m",
-      linux: "ctrl+shift+m",
-    },
-  },
-  {
     id: "audio_recording",
-    name: "Voice Input",
-    description: "Start voice recording",
+    name: "Toggle Recording (Mic/System)",
+    description: "Start/Stop recording audio to process and send to AI",
     defaultKey: {
       macos: "cmd+shift+a",
       windows: "ctrl+shift+a",
