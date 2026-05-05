@@ -76,7 +76,7 @@ export const AudioRecorder = ({
 
       await invoke("stop_system_audio_capture").catch(() => {});
 
-      // 2. Start Native Capture
+      // 2. Start Native Capture (Continuous Mode - No VAD)
       const vadConfig = {
         enabled: false, 
         max_recording_duration_secs: 180,
@@ -130,7 +130,6 @@ export const AudioRecorder = ({
     <div className="border bg-background rounded-lg overflow-hidden">
       <div className="h-12 relative bg-muted/20">
         <div className="h-full w-full pt-3">
-          {/* AudioVisualizer has a built-in fake stream generator so it will still animate globally! */}
           <AudioVisualizer isRecording={!isTranscribing} />
         </div>
       </div>

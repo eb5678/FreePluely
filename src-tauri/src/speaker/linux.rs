@@ -433,6 +433,8 @@ impl SpeakerStream {
     }
 }
 
+// BUG FIX: Only fallback to monitor if NO device ID is provided. 
+// We will explicitly pass @DEFAULT_SOURCE@ from the frontend for mics.
 fn get_default_monitor_source() -> Option<String> {
     Some("@DEFAULT_MONITOR@".to_string())
 }

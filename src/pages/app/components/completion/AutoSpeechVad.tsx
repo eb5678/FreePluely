@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { LoaderCircleIcon, SquareIcon } from "lucide-react";
+import { LoaderCircleIcon, MicOffIcon } from "lucide-react";
 import { Button } from "@/components";
 import { useApp } from "@/contexts";
+import { fetchSTT, shouldUsePluelyAPI } from "@/lib";
 import { UseCompletionReturn } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -20,18 +21,25 @@ export const AutoSpeechVAD = ({
   microphoneDeviceId,
 }: AutoSpeechVADProps) => {
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const { selectedSttProvider, allSttProviders } = useApp();
 
   useEffect(() => {
-    let unlisten: any;
+    let unlistenSpeechDetected: any;
+    let unlistenSpeechStart: any;
 
-    const startNativeRecording = async () => {
+    const startNativeVAD = async () => {
       try {
-        // 1. Listen for the native audio payload from Rust
-        unlisten = await listen("speech-detected", async (event: any) => {
+        // 1. Rust tells us the user started talking
+        unlistenSpeechStart = await listen("speech-start", () => {
+          setIsUserSpeaking(true);
+        });
+
+        // 2. Rust tells us the user finished talking and hands us the audio
+        unlistenSpeechDetected = await listen("speech-detected", async (event: any) => {
+          setIsUserSpeaking(false);
           setIsTranscribing(true);
 
-          // Decode raw Base64 audio into WAV
           const base64Audio = event.payload as string;
           const binaryString = atob(base64Audio);
           const bytes = new Uint8Array(binaryString.length);
@@ -40,8 +48,6 @@ export const AutoSpeechVAD = ({
           }
           const audioBlob = new Blob([bytes], { type: "audio/wav" });
 
-          // Send to STT API via curl
-          const { fetchSTT, shouldUsePluelyAPI } = await import("@/lib");
           const usePluelyAPI = await shouldUsePluelyAPI();
           const providerConfig = allSttProviders.find(p => p.id === selectedSttProvider.provider);
           
@@ -55,15 +61,14 @@ export const AutoSpeechVAD = ({
           }
           
           setIsTranscribing(false);
-          setEnableVAD(false); // Hide red square, return to mic icon
         });
 
-        // 2. Clear out any other audio captures
+        // 3. Clear conflicting audio requests
         await invoke("stop_system_audio_capture").catch(() => {});
 
-        // 3. Start the Rust audio daemon
+        // 4. Start the Rust audio daemon with VAD ENABLED
         const vadConfig = {
-          enabled: false, // Forces continuous manual mode (push to stop)
+          enabled: true, 
           max_recording_duration_secs: 180,
           hop_size: 1024, sensitivity_rms: 0.012, peak_threshold: 0.035, silence_chunks: 45, min_speech_chunks: 7, pre_speech_chunks: 12, noise_gate_threshold: 0.003
         };
@@ -74,7 +79,7 @@ export const AutoSpeechVAD = ({
         });
         
       } catch (err) {
-        console.error("Native recording failed:", err);
+        console.error("Native VAD failed:", err);
         setState((prev: any) => ({
           ...prev,
           error: "Native microphone access failed.",
@@ -83,23 +88,24 @@ export const AutoSpeechVAD = ({
       }
     };
 
-    startNativeRecording();
+    startNativeVAD();
 
-    // Cleanup on unmount
+    // Cleanup when user clicks the mic button again to turn it off
     return () => {
-      if (unlisten) unlisten();
+      if (unlistenSpeechDetected) unlistenSpeechDetected();
+      if (unlistenSpeechStart) unlistenSpeechStart();
       invoke("stop_system_audio_capture").catch(() => {});
     };
-  }, []);
+  }, [allSttProviders, selectedSttProvider, submit, setState, setEnableVAD, microphoneDeviceId]);
 
-  // Tell Rust to lock the buffer and send it
-  const stopAndSend = async () => {
-    await invoke("manual_stop_continuous").catch(() => {});
+  // Provide manual override to turn it off
+  const handleToggleOff = () => {
+    setEnableVAD(false);
   };
 
   if (isTranscribing) {
     return (
-      <Button size="icon" disabled className="cursor-not-allowed">
+      <Button size="icon" onClick={handleToggleOff} className="cursor-pointer">
         <LoaderCircleIcon className="h-4 w-4 animate-spin text-green-500" />
       </Button>
     );
@@ -108,11 +114,15 @@ export const AutoSpeechVAD = ({
   return (
     <Button
       size="icon"
-      onClick={stopAndSend}
-      className="cursor-pointer bg-red-100 hover:bg-red-200 text-red-600 animate-pulse border-red-200"
-      title="Click to Stop recording and transcribe"
+      onClick={handleToggleOff}
+      className="cursor-pointer"
+      title="Click to turn off voice detection"
     >
-      <SquareIcon className="h-4 w-4" fill="currentColor" />
+      {isUserSpeaking ? (
+        <LoaderCircleIcon className="h-4 w-4 animate-spin text-primary" />
+      ) : (
+        <MicOffIcon className="h-4 w-4 animate-pulse text-red-500" />
+      )}
     </Button>
   );
 };
