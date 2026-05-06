@@ -1,11 +1,9 @@
-import { Card, DragButton, CustomCursor, Button } from "@/components";
+import { Card, CustomCursor, Button } from "@/components";
 import { Completion } from "./components";
 import { useApp } from "@/hooks";
 import { useApp as useAppContext } from "@/contexts";
 import { SparklesIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { ErrorBoundary } from "react-error-boundary";
-import { ErrorLayout } from "@/layouts";
 import { getPlatform } from "@/lib";
 
 const App = () => {
@@ -22,15 +20,6 @@ const App = () => {
   };
 
   return (
-    <ErrorBoundary
-      fallbackRender={() => {
-        return <ErrorLayout isCompact />;
-      }}
-      resetKeys={["app-error"]}
-      onReset={() => {
-        console.log("Reset");
-      }}
-    >
       <div
         className={`w-screen h-screen flex overflow-hidden justify-center items-start ${
           isHidden ? "hidden pointer-events-none" : ""
@@ -49,15 +38,12 @@ const App = () => {
               <SparklesIcon className="h-4 w-4" />
             </Button>
           </div>
-          
-          <DragButton />
         </Card>
         
         {customizable.cursor.type === "invisible" && platform !== "linux" ? (
           <CustomCursor />
         ) : null}
       </div>
-    </ErrorBoundary>
   );
 };
 

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components";
 import { AudioVisualizer } from "@/pages/app/components/speech/audio-visualizer";
-import { shouldUsePluelyAPI, fetchSTT } from "@/lib";
+import { fetchSTT } from "@/lib";
 import { useApp } from "@/contexts";
 import { StopCircle, Send } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -57,11 +57,10 @@ export const AudioRecorder = ({
         const audioBlob = new Blob([bytes], { type: "audio/wav" });
 
         try {
-          const usePluelyAPI = await shouldUsePluelyAPI();
           const provider = allSttProviders.find(p => p.id === selectedSttProvider.provider);
 
           const text = await fetchSTT({
-            provider: usePluelyAPI ? undefined : provider,
+            provider: provider,
             selectedProvider: selectedSttProvider,
             audio: audioBlob,
           });
