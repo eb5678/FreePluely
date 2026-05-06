@@ -1,19 +1,8 @@
 import { Sidebar } from "@/components";
 import { Outlet } from "react-router-dom";
-import { ErrorBoundary } from "react-error-boundary";
-import { ErrorLayout } from "./ErrorLayout";
 
 export const DashboardLayout = () => {
   return (
-    <ErrorBoundary
-      fallbackRender={() => {
-        return <ErrorLayout />;
-      }}
-      resetKeys={["dashboard-error"]}
-      onReset={() => {
-        console.log("Reset");
-      }}
-    >
       <div className="relative flex h-screen w-screen overflow-hidden bg-background">
         {/* Draggable region */}
         <div
@@ -28,6 +17,5 @@ export const DashboardLayout = () => {
           <Outlet />
         </main>
       </div>
-    </ErrorBoundary>
   );
 };
