@@ -60,7 +60,6 @@ pub struct ShortcutsConfig {
 pub fn setup_global_shortcuts<R: Runtime>(
     app: &AppHandle<R>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Let the frontend initialize from localStorage
     let state = app.state::<RegisteredShortcuts>();
     let _registered = match state.shortcuts.lock() {
         Ok(guard) => guard,
@@ -87,7 +86,6 @@ pub fn handle_shortcut_action<R: Runtime>(app: &AppHandle<R>, action_id: &str) {
         "audio_recording" => handle_audio_shortcut(app),
         "screenshot" => handle_screenshot_shortcut(app),
         custom_action => {
-            // Emit custom action event for frontend to handle
             if let Some(window) = app.get_webview_window("main") {
                 if let Err(e) = window.emit(
                     "custom-shortcut-triggered",
@@ -153,7 +151,6 @@ pub fn stop_all_move_windows<R: Runtime>(app: &AppHandle<R>) {
 
 /// Handle app toggle (hide/show) with input focus and app icon management
 fn handle_toggle_window<R: Runtime>(app: &AppHandle<R>) {
-    // Get the main window
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
@@ -190,13 +187,11 @@ fn handle_toggle_window<R: Runtime>(app: &AppHandle<R>) {
                 let panel = app.get_webview_window("main").unwrap();
                 let _ = panel.hide();
             }
-            // Window is visible, hide it and handle app icon based on user settings
             if let Err(e) = window.hide() {
                 eprintln!("Failed to hide window: {}", e);
             }
         }
         Ok(false) => {
-            // Window is hidden, show it and handle app icon based on user settings
             if let Err(e) = window.show() {
                 eprintln!("Failed to show window: {}", e);
             }
@@ -210,7 +205,6 @@ fn handle_toggle_window<R: Runtime>(app: &AppHandle<R>) {
                 let panel = app.get_webview_panel("main").unwrap();
                 panel.show();
             }
-            // Emit event to focus text input
             window.emit("focus-text-input", json!({})).unwrap();
         }
         Err(e) => {
@@ -222,7 +216,6 @@ fn handle_toggle_window<R: Runtime>(app: &AppHandle<R>) {
 /// Handle audio shortcut
 fn handle_audio_shortcut<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
-        // Ensure window is visible
         if let Ok(false) = window.is_visible() {
             if let Err(_e) = window.show() {
                 return;
@@ -231,8 +224,6 @@ fn handle_audio_shortcut<R: Runtime>(app: &AppHandle<R>) {
                 eprintln!("Failed to focus window: {}", e);
             }
         }
-
-        // Emit event to start audio recording
         if let Err(e) = window.emit("start-audio-recording", json!({})) {
             eprintln!("Failed to emit audio recording event: {}", e);
         }
@@ -242,14 +233,12 @@ fn handle_audio_shortcut<R: Runtime>(app: &AppHandle<R>) {
 /// Handle screenshot shortcut
 fn handle_screenshot_shortcut<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
-        // Emit event to trigger screenshot - frontend will determine auto/manual mode
         if let Err(e) = window.emit("trigger-screenshot", json!({})) {
             eprintln!("Failed to emit screenshot event: {}", e);
         }
     }
 }
 
-/// Tauri command to get all registered shortcuts
 #[tauri::command]
 pub fn get_registered_shortcuts<R: Runtime>(
     app: AppHandle<R>,
@@ -265,7 +254,6 @@ pub fn get_registered_shortcuts<R: Runtime>(
     Ok(registered.clone())
 }
 
-/// Tauri command to update shortcuts dynamically
 #[tauri::command]
 pub fn update_shortcuts<R: Runtime>(
     app: AppHandle<R>,
@@ -322,15 +310,10 @@ pub fn update_shortcuts<R: Runtime>(
         }
     }
 
-    // First, stop any ongoing window movement
     stop_all_move_windows(&app);
-
-    // Then, unregister all existing shortcuts
     unregister_all_shortcuts(&app)?;
 
-    // Now register all new shortcuts
     let mut successfully_registered = HashMap::new();
-
     let mut registration_failures: Vec<(String, String, String)> = Vec::new();
 
     for (action_id, shortcut_str, shortcut) in shortcuts_to_register {
@@ -346,7 +329,6 @@ pub fn update_shortcuts<R: Runtime>(
         }
     }
 
-    // Update state with successfully registered shortcuts
     {
         let state = app.state::<RegisteredShortcuts>();
         let mut registered = match state.shortcuts.lock() {
@@ -382,7 +364,6 @@ pub fn update_shortcuts<R: Runtime>(
     Ok(())
 }
 
-/// Unregister all currently registered shortcuts
 fn unregister_all_shortcuts<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let state = app.state::<RegisteredShortcuts>();
     let registered = match state.shortcuts.lock() {
@@ -409,7 +390,6 @@ fn unregister_all_shortcuts<R: Runtime>(app: &AppHandle<R>) -> Result<(), String
     Ok(())
 }
 
-/// Tauri command to check if shortcuts are registered
 #[tauri::command]
 pub fn check_shortcuts_registered<R: Runtime>(app: AppHandle<R>) -> Result<bool, String> {
     let state = app.state::<RegisteredShortcuts>();
@@ -423,25 +403,21 @@ pub fn check_shortcuts_registered<R: Runtime>(app: AppHandle<R>) -> Result<bool,
     Ok(!registered.is_empty())
 }
 
-/// Tauri command to validate shortcut key
 #[tauri::command]
 pub fn validate_shortcut_key(key: String) -> Result<bool, String> {
     match key.parse::<Shortcut>() {
         Ok(_) => Ok(true),
         Err(e) => {
             eprintln!("Invalid shortcut '{}': {}", key, e);
-            Ok(false) // fixed returning true for invalid shortcuts
+            Ok(false)
         }
     }
 }
 
-
-/// Tauri command to set app icon visibility in dock/taskbar
 #[tauri::command]
 pub fn set_app_icon_visibility<R: Runtime>(app: AppHandle<R>, visible: bool) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        // On macOS, use activation policy to control dock icon
         let policy = if visible {
             tauri::ActivationPolicy::Regular
         } else {
@@ -456,7 +432,6 @@ pub fn set_app_icon_visibility<R: Runtime>(app: AppHandle<R>, visible: bool) -> 
 
     #[cfg(target_os = "windows")]
     {
-        // On Windows, control taskbar icon visibility
         if let Some(window) = app.get_webview_window("main") {
             window
                 .set_skip_taskbar(!visible)
@@ -468,7 +443,6 @@ pub fn set_app_icon_visibility<R: Runtime>(app: AppHandle<R>, visible: bool) -> 
 
     #[cfg(target_os = "linux")]
     {
-        // On Linux, control panel icon visibility
         if let Some(window) = app.get_webview_window("main") {
             window
                 .set_skip_taskbar(!visible)
@@ -481,13 +455,13 @@ pub fn set_app_icon_visibility<R: Runtime>(app: AppHandle<R>, visible: bool) -> 
     Ok(())
 }
 
-/// Tauri command to set always on top state
 #[tauri::command]
 pub fn set_always_on_top<R: Runtime>(app: AppHandle<R>, enabled: bool) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         window
             .set_always_on_top(enabled)
             .map_err(|e| format!("Failed to set always on top: {}", e))?;
+        let _ = window.set_visible_on_all_workspaces(enabled);
     } else {
         return Err("Main window not found".to_string());
     }
@@ -495,18 +469,21 @@ pub fn set_always_on_top<R: Runtime>(app: AppHandle<R>, enabled: bool) -> Result
     Ok(())
 }
 
-/// Handle toggle dashboard shortcut
 fn handle_toggle_dashboard<R: Runtime>(app: &AppHandle<R>) {
     if let Some(dashboard_window) = app.get_webview_window("dashboard") {
         match dashboard_window.is_visible() {
             Ok(true) => {
-                // Window is visible, hide it
+                #[cfg(target_os = "linux")]
+                if let Err(e) = dashboard_window.close() {
+                    eprintln!("Failed to close dashboard window: {}", e);
+                }
+                
+                #[cfg(not(target_os = "linux"))]
                 if let Err(e) = dashboard_window.hide() {
                     eprintln!("Failed to hide dashboard window: {}", e);
                 }
             }
             Ok(false) => {
-                // Window is hidden, show and focus it
                 if let Err(e) = dashboard_window.show() {
                     eprintln!("Failed to show dashboard window: {}", e);
                 }
@@ -519,7 +496,6 @@ fn handle_toggle_dashboard<R: Runtime>(app: &AppHandle<R>) {
             }
         }
     } else {
-        // Window doesn't exist, create and show it
         match show_dashboard_window(app) {
             Ok(_) => eprintln!("Dashboard window created and shown successfully"),
             Err(e) => eprintln!("Failed to create/show dashboard window: {}", e),
@@ -527,10 +503,8 @@ fn handle_toggle_dashboard<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-/// Handle focus input shortcut
 fn handle_focus_input<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
-        // Ensure window is visible
         if let Ok(false) = window.is_visible() {
             let _ = window.show();
         }
@@ -574,7 +548,6 @@ fn handle_move_window<R: Runtime>(app: &AppHandle<R>, direction: &str) {
     }
 }
 
-/// Tauri command to exit the application
 #[tauri::command]
 pub fn exit_app(app_handle: tauri::AppHandle) {
     app_handle.exit(0);

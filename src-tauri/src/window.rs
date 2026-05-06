@@ -12,6 +12,11 @@ pub fn setup_main_window(app: &mut App) -> Result<(), Box<dyn std::error::Error>
         .ok_or("No window found")?;
 
     position_window_top_center(&window, TOP_OFFSET)?;
+    
+    // Explicitly enforce window stickiness and priority for Wayland compositors
+    let _ = window.set_always_on_top(true);
+    let _ = window.set_visible_on_all_workspaces(true);
+
     Ok(())
 }
 
@@ -52,6 +57,12 @@ pub fn toggle_dashboard(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(dashboard_window) = app.get_webview_window("dashboard") {
         match dashboard_window.is_visible() {
             Ok(true) => {
+                // On Linux, to prevent WebKitGTK bugs causing transparency black screens, 
+                // we CLOSE rather than HIDE auxiliary windows sharing the process.
+                #[cfg(target_os = "linux")]
+                dashboard_window.close().map_err(|e| format!("Failed to close window: {}", e))?;
+                
+                #[cfg(not(target_os = "linux"))]
                 dashboard_window.hide().map_err(|e| format!("Failed to hide window: {}", e))?;
             }
             Ok(false) => {
@@ -95,8 +106,7 @@ pub fn create_dashboard_window<R: Runtime>(
         .inner_size(1200.0, 800.0)
         .min_inner_size(800.0, 600.0)
         .hidden_title(true)
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .visible(false);
+        .title_bar_style(tauri::TitleBarStyle::Overlay);
 
     #[cfg(not(target_os = "macos"))]
     let base_builder = base_builder
@@ -104,50 +114,39 @@ pub fn create_dashboard_window<R: Runtime>(
         .center()
         .decorations(true)
         .inner_size(800.0, 600.0)
-        .min_inner_size(800.0, 600.0)
-        .visible(false);
+        .min_inner_size(800.0, 600.0);
 
     let window = base_builder.build()?;
 
-    let window_clone = window.clone();
-    window.on_window_event(move |event| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            api.prevent_close();
-            let _ = window_clone.hide();
-        }
-    });
+    // Do NOT intercept and hide close events on Linux entirely. Allowing 
+    // it to safely close maintains WebKit component render integrity.
+    #[cfg(not(target_os = "linux"))]
+    {
+        let window_clone = window.clone();
+        window.on_window_event(move |event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window_clone.hide();
+            }
+        });
+    }
 
     Ok(window)
 }
 
-// 🐛 WAYLAND FIX 🐛: Force a redraw by setting the size + 1px then back immediately when showing.
 pub fn show_dashboard_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    let window = if let Some(w) = app.get_webview_window("dashboard") {
-        w
+    if let Some(w) = app.get_webview_window("dashboard") {
+        w.show().map_err(|e| format!("Failed to show window: {}", e))?;
+        w.set_focus().map_err(|e| format!("Failed to focus window: {}", e))?;
     } else {
-        create_dashboard_window(app).map_err(|e| format!("Failed to create window: {}", e))?
-    };
-
-    window.show().map_err(|e| format!("Failed to show window: {}", e))?;
-    window.set_focus().map_err(|e| format!("Failed to focus window: {}", e))?;
-
-    // Fix for Wayland buttons not responding to clicks initially
-    #[cfg(target_os = "linux")]
-    {
-        let w = window.clone();
-        tauri::async_runtime::spawn(async move {
-            // Wait for compositor to map the window
-            tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
-            if let Ok(size) = w.inner_size() {
-                // Force a frame layout recalculation
-                let _ = w.set_size(tauri::Size::Physical(tauri::PhysicalSize {
-                    width: size.width + 1,
-                    height: size.height,
-                }));
-                tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-                let _ = w.set_size(tauri::Size::Physical(size));
-            }
-        });
+        let _w = create_dashboard_window(app).map_err(|e| format!("Failed to create window: {}", e))?;
     }
+
+    // Safely enforce main window persists its sticky state once interaction resolves
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.set_always_on_top(true);
+        let _ = main.set_visible_on_all_workspaces(true);
+    }
+    
     Ok(())
 }

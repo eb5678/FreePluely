@@ -72,12 +72,6 @@ pub fn run() {
         ])
         .setup(|app| {
             window::setup_main_window(app).expect("Failed to setup main window");
-            let app_handle = app.handle();
-            if app_handle.get_webview_window("dashboard").is_none() {
-                if let Err(e) = window::create_dashboard_window(&app_handle) {
-                    eprintln!("Failed to pre-create dashboard window: {}", e);
-                }
-            }
 
             app.handle().plugin(
                 tauri_plugin_global_shortcut::Builder::new()
