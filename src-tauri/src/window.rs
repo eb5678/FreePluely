@@ -134,14 +134,20 @@ pub fn show_dashboard_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Strin
     // Fix for Wayland buttons not responding to clicks initially
     #[cfg(target_os = "linux")]
     {
-        if let Ok(size) = window.inner_size() {
-            let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
-                width: size.width + 1,
-                height: size.height,
-            }));
-            let _ = window.set_size(tauri::Size::Physical(size));
-        }
+        let w = window.clone();
+        tauri::async_runtime::spawn(async move {
+            // Wait for compositor to map the window
+            tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+            if let Ok(size) = w.inner_size() {
+                // Force a frame layout recalculation
+                let _ = w.set_size(tauri::Size::Physical(tauri::PhysicalSize {
+                    width: size.width + 1,
+                    height: size.height,
+                }));
+                tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                let _ = w.set_size(tauri::Size::Physical(size));
+            }
+        });
     }
-
     Ok(())
 }
