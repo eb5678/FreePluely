@@ -1,13 +1,44 @@
-import { Badge, Input, Card, Empty } from "@/components";
+import { 
+  Badge, 
+  Input, 
+  Card, 
+  Empty, 
+  Button, 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
+  DialogTitle 
+} from "@/components";
 import { useHistory } from "@/hooks";
 import { PageLayout } from "@/layouts";
-import { MessageCircleIcon, Search } from "lucide-react";
+import { MessageCircleIcon, Search, Trash2Icon, Loader2 } from "lucide-react";
 import moment from "moment";
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { deleteAllConversations } from "@/lib";
 
 const Dashboard = () => {
   const conversations = useHistory();
   const navigate = useNavigate();
+  
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAll = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteAllConversations();
+      await conversations.refreshConversations();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteDialogOpen(false);
+    }
+  };
+
   // Group conversations by date
   const groupedConversations = conversations.conversations.reduce(
     (acc, doc) => {
@@ -30,6 +61,18 @@ const Dashboard = () => {
     <PageLayout
       title="All conversations"
       description="View all your conversations"
+      rightSlot={
+        conversations.conversations.length > 0 && (
+          <Button
+            variant="destructive"
+            onClick={() => setIsDeleteDialogOpen(true)}
+            className="h-9"
+          >
+            <Trash2Icon className="mr-2 h-4 w-4" />
+            Delete All
+          </Button>
+        )
+      }
     >
       <>
         {conversations.conversations.length === 0 ? (
@@ -93,6 +136,32 @@ const Dashboard = () => {
               ))}
           </div>
         )}
+
+        <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Delete All Conversations</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete all chat history? This action cannot be undone and will permanently remove all stored conversations.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="mt-4">
+              <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isDeleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleDeleteAll} disabled={isDeleting}>
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete All"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </>
     </PageLayout>
   );
