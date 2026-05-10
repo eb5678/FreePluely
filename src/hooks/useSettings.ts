@@ -39,15 +39,6 @@ export const useSettings = () => {
     );
   };
 
-  const handleScreenshotPromptChange = (value: string) => {
-    const newConfig = { ...screenshotConfiguration, autoPrompt: value };
-    setScreenshotConfiguration(newConfig);
-    safeLocalStorage.setItem(
-      STORAGE_KEYS.SCREENSHOT_CONFIG,
-      JSON.stringify(newConfig)
-    );
-  };
-
   const handleScreenshotEnabledChange = (enabled: boolean) => {
     if (!enabled) {
       return;
@@ -97,7 +88,6 @@ export const useSettings = () => {
     screenshotConfiguration,
     setScreenshotConfiguration,
     handleScreenshotModeChange,
-    handleScreenshotPromptChange,
     handleScreenshotEnabledChange,
     allAiProviders,
     allSttProviders,

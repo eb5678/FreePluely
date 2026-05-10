@@ -5,7 +5,6 @@ import { listen } from "@tauri-apps/api/event";
 import { useApp } from "@/contexts";
 import { fetchSTT, fetchAIResponse } from "@/lib/functions";
 import {
-  DEFAULT_QUICK_ACTIONS,
   DEFAULT_SYSTEM_PROMPT,
   STORAGE_KEYS,
 } from "@/config";
@@ -106,7 +105,7 @@ export function useSystemAudio() {
     selectedAudioDevices,
   } = useApp();
   const abortControllerRef = useRef<AbortController | null>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSavingRef = useRef<boolean>(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -134,24 +133,6 @@ export function useSystemAudio() {
       } catch (error) {
         console.error("Failed to load VAD config:", error);
       }
-    }
-  }, []);
-
-  // Load quick actions from localStorage on mount
-  useEffect(() => {
-    const savedActions = safeLocalStorage.getItem(
-      STORAGE_KEYS.SYSTEM_AUDIO_QUICK_ACTIONS
-    );
-    if (savedActions) {
-      try {
-        const parsed = JSON.parse(savedActions);
-        setQuickActions(parsed);
-      } catch (error) {
-        console.error("Failed to load quick actions:", error);
-        setQuickActions(DEFAULT_QUICK_ACTIONS);
-      }
-    } else {
-      setQuickActions(DEFAULT_QUICK_ACTIONS);
     }
   }, []);
 

@@ -4,27 +4,14 @@ import {
   Label,
   Slider,
   Switch,
-  Textarea,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  SelectLabel,
-  SelectGroup,
 } from "@/components";
 import {
   ChevronDownIcon,
   SettingsIcon,
-  WandIcon,
   RotateCcwIcon,
   ChevronUpIcon,
 } from "lucide-react";
 import { VadConfig } from "@/hooks/useSystemAudio";
-import {
-  PROMPT_TEMPLATES,
-  getPromptTemplateById,
-} from "@/lib/platform-instructions";
 import { cn } from "@/lib/utils";
 
 // Sensitivity presets for simpler UX
@@ -67,12 +54,9 @@ export const SettingsPanel = ({
   onUpdateVadConfig,
   useSystemPrompt,
   setUseSystemPrompt,
-  contextContent,
-  setContextContent,
 }: SettingsPanelProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<string>("");
 
   // Determine current sensitivity preset based on values
   const getCurrentPreset = (): SensitivityPreset | "custom" => {
@@ -97,14 +81,6 @@ export const SettingsPanel = ({
       sensitivity_rms: presetValues.sensitivity_rms,
       noise_gate_threshold: presetValues.noise_gate_threshold,
     });
-  };
-
-  const handleTemplateSelection = (templateId: string) => {
-    const template = getPromptTemplateById(templateId);
-    if (template) {
-      setContextContent(template.prompt);
-      setSelectedTemplate("");
-    }
   };
 
   const handleResetDefaults = () => {
@@ -234,45 +210,6 @@ export const SettingsPanel = ({
                 onCheckedChange={setUseSystemPrompt}
               />
             </div>
-
-            {/* Custom Context */}
-            {!useSystemPrompt && (
-              <div className="space-y-2">
-                <div className="flex justify-end">
-                  <Select
-                    value={selectedTemplate}
-                    onValueChange={handleTemplateSelection}
-                  >
-                    <SelectTrigger className="w-auto h-7 text-xs">
-                      <WandIcon className="w-3 h-3 mr-1.5" />
-                      <SelectValue placeholder="Templates" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectLabel className="text-xs py-1">
-                          Quick-fill a template
-                        </SelectLabel>
-                        {PROMPT_TEMPLATES.map((template) => (
-                          <SelectItem
-                            key={template.id}
-                            value={template.id}
-                            className="text-xs"
-                          >
-                            {template.name}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Textarea
-                  placeholder="Enter custom system prompt and context..."
-                  value={contextContent}
-                  onChange={(e) => setContextContent(e.target.value)}
-                  className="min-h-24 resize-none text-xs"
-                />
-              </div>
-            )}
           </div>
 
           {/* Advanced Settings Toggle */}

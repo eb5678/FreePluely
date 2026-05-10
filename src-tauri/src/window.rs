@@ -38,12 +38,8 @@ pub fn position_window_top_center(
 }
 
 #[tauri::command]
-pub fn set_window_height(window: tauri::WebviewWindow, height: u32) -> Result<(), String> {
-    use tauri::{LogicalSize, Size};
-    let new_size = LogicalSize::new(600.0, height as f64);
-    window
-        .set_size(Size::Logical(new_size))
-        .map_err(|e| format!("Failed to resize window: {}", e))?;
+pub fn set_window_height(_window: tauri::WebviewWindow, _height: u32) -> Result<(), String> {
+    // Disabled dynamic resizing logic. The window is now naturally resizable by the user OS layer 
     Ok(())
 }
 
@@ -57,8 +53,6 @@ pub fn toggle_dashboard(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(dashboard_window) = app.get_webview_window("dashboard") {
         match dashboard_window.is_visible() {
             Ok(true) => {
-                // On Linux, to prevent WebKitGTK bugs causing transparency black screens, 
-                // we CLOSE rather than HIDE auxiliary windows sharing the process.
                 #[cfg(target_os = "linux")]
                 dashboard_window.close().map_err(|e| format!("Failed to close window: {}", e))?;
                 
@@ -120,8 +114,6 @@ pub fn create_dashboard_window<R: Runtime>(
 
     let window = base_builder.build()?;
 
-    // Do NOT intercept and hide close events on Linux entirely. Allowing 
-    // it to safely close maintains WebKit component render integrity.
     #[cfg(not(target_os = "linux"))]
     {
         let window_clone = window.clone();
@@ -144,7 +136,6 @@ pub fn show_dashboard_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Strin
         let _w = create_dashboard_window(app).map_err(|e| format!("Failed to create window: {}", e))?;
     }
 
-    // Safely enforce main window persists its sticky state once interaction resolves
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.set_always_on_top(true);
         let _ = main.set_visible_on_all_workspaces(true);

@@ -7,7 +7,6 @@ export interface UseSettingsReturn {
     React.SetStateAction<ScreenshotConfig>
   >;
   handleScreenshotModeChange: (value: ScreenshotMode) => void;
-  handleScreenshotPromptChange: (value: string) => void;
   handleScreenshotEnabledChange: (enabled: boolean) => void;
   allAiProviders: TYPE_PROVIDER[];
   allSttProviders: TYPE_PROVIDER[];

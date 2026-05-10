@@ -9,7 +9,6 @@ import {
   MESSAGE_ID_OFFSET,
   generateMessageId,
   generateRequestId,
-  getResponseSettings,
 } from "@/lib";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -85,14 +84,7 @@ export const useChatCompletion = (
   useEffect(() => {
     screenshotConfigRef.current = screenshotConfiguration;
   }, [screenshotConfiguration]);
-
-  const scrollToBottom = () => {
-    const responseSettings = getResponseSettings();
-    if (responseSettings.autoScroll) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  };
-
+  
   const setInput = useCallback((value: string) => {
     setState((prev) => ({ ...prev, input: value }));
   }, []);
@@ -200,9 +192,6 @@ export const useChatCompletion = (
           attachedFiles: [],
         }));
 
-        // Scroll to bottom after adding user message
-        setTimeout(scrollToBottom, 100);
-
         let fullResponse = "";
 
         try {
@@ -257,9 +246,6 @@ export const useChatCompletion = (
             }
 
             setMessages(updatedWithResponse);
-
-            // Auto-scroll during streaming
-            scrollToBottom();
           }
         } catch (e: any) {
           // Only show error if this is still the current request and not aborted
@@ -563,7 +549,7 @@ export const useChatCompletion = (
 
         if (config.mode === "auto") {
           // Auto mode: Submit directly to AI with the configured prompt
-          await handleScreenshotSubmit(base64 as string, config.autoPrompt);
+          await handleScreenshotSubmit(base64 as string);
         } else if (config.mode === "manual") {
           // Manual mode: Add to attached files without prompt
           await handleScreenshotSubmit(base64 as string);
@@ -609,7 +595,7 @@ export const useChatCompletion = (
         try {
           if (config.mode === "auto") {
             // Auto mode: Submit directly to AI with the configured prompt
-            await handleScreenshotSubmit(base64 as string, config.autoPrompt);
+            await handleScreenshotSubmit(base64 as string);
           } else if (config.mode === "manual") {
             // Manual mode: Add to attached files without prompt
             await handleScreenshotSubmit(base64 as string);

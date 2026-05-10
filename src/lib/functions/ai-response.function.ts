@@ -8,35 +8,15 @@ import {
 import { Message, TYPE_PROVIDER } from "@/types";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import curl2Json from "@bany/curl-to-json";
-import { getResponseSettings, RESPONSE_LENGTHS, LANGUAGES } from "@/lib";
-import { MARKDOWN_FORMATTING_INSTRUCTIONS } from "@/config/constants";
 
 function buildEnhancedSystemPrompt(baseSystemPrompt?: string): string {
-  const responseSettings = getResponseSettings();
   const prompts: string[] = [];
 
   if (baseSystemPrompt) {
     prompts.push(baseSystemPrompt);
   }
 
-  const lengthOption = RESPONSE_LENGTHS.find(
-    (l) => l.id === responseSettings.responseLength
-  );
-  if (lengthOption?.prompt?.trim()) {
-    prompts.push(lengthOption.prompt);
-  }
-
-  const languageOption = LANGUAGES.find(
-    (l) => l.id === responseSettings.language
-  );
-  if (languageOption?.prompt?.trim()) {
-    prompts.push(languageOption.prompt);
-  }
-
-  // Add markdown formatting instructions
-  prompts.push(MARKDOWN_FORMATTING_INSTRUCTIONS);
-
-  return prompts.join(" ");
+  return prompts.join("\n\n");
 }
 
 export async function* fetchAIResponse(params: {

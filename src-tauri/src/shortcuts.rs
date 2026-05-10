@@ -77,7 +77,6 @@ pub fn setup_global_shortcuts<R: Runtime>(
 pub fn handle_shortcut_action<R: Runtime>(app: &AppHandle<R>, action_id: &str) {
     match action_id {
         "toggle_dashboard" => handle_toggle_dashboard(app),
-        "toggle_window" => handle_toggle_window(app),
         "focus_input" => handle_focus_input(app),
         "move_window_up" => handle_move_window(app, "up"),
         "move_window_down" => handle_move_window(app, "down"),
@@ -146,70 +145,6 @@ pub fn stop_all_move_windows<R: Runtime>(app: &AppHandle<R>) {
 
     for (_direction, flag) in tasks.drain() {
         flag.store(true, Ordering::Relaxed);
-    }
-}
-
-/// Handle app toggle (hide/show) with input focus and app icon management
-fn handle_toggle_window<R: Runtime>(app: &AppHandle<R>) {
-    let Some(window) = app.get_webview_window("main") else {
-        return;
-    };
-
-    #[cfg(target_os = "windows")]
-    {
-        let state = app.state::<WindowVisibility>();
-        let mut is_hidden = state.is_hidden.lock().unwrap();
-        *is_hidden = !*is_hidden;
-
-        if let Err(e) = window.emit("toggle-window-visibility", *is_hidden) {
-            eprintln!("Failed to emit toggle-window-visibility event: {}", e);
-        }
-
-        if !*is_hidden {
-            if let Err(e) = window.show() {
-                eprintln!("Failed to show window: {}", e);
-            }
-            if let Err(e) = window.set_focus() {
-                eprintln!("Failed to focus window: {}", e);
-            }
-            if let Err(e) = window.emit("focus-text-input", json!({})) {
-                eprintln!("Failed to emit focus-text-input event: {}", e);
-            }
-        }
-        return;
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    match window.is_visible() {
-        Ok(true) => {
-            #[cfg(target_os = "macos")]
-            {
-                let panel = app.get_webview_window("main").unwrap();
-                let _ = panel.hide();
-            }
-            if let Err(e) = window.hide() {
-                eprintln!("Failed to hide window: {}", e);
-            }
-        }
-        Ok(false) => {
-            if let Err(e) = window.show() {
-                eprintln!("Failed to show window: {}", e);
-            }
-
-            if let Err(e) = window.set_focus() {
-                eprintln!("Failed to focus window: {}", e);
-            }
-
-            #[cfg(target_os = "macos")]
-            {
-                let panel = app.get_webview_panel("main").unwrap();
-                panel.show();
-            }
-            window.emit("focus-text-input", json!({})).unwrap();
-        }
-        Err(e) => {
-            eprintln!("Failed to check window visibility: {}", e);
-        }
     }
 }
 
@@ -412,61 +347,6 @@ pub fn validate_shortcut_key(key: String) -> Result<bool, String> {
             Ok(false)
         }
     }
-}
-
-#[tauri::command]
-pub fn set_app_icon_visibility<R: Runtime>(app: AppHandle<R>, visible: bool) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        let policy = if visible {
-            tauri::ActivationPolicy::Regular
-        } else {
-            tauri::ActivationPolicy::Accessory
-        };
-
-        app.set_activation_policy(policy).map_err(|e| {
-            eprintln!("Failed to set activation policy: {}", e);
-            format!("Failed to set activation policy: {}", e)
-        })?;
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        if let Some(window) = app.get_webview_window("main") {
-            window
-                .set_skip_taskbar(!visible)
-                .map_err(|e| format!("Failed to set taskbar visibility: {}", e))?;
-        } else {
-            eprintln!("Main window not found on Windows");
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        if let Some(window) = app.get_webview_window("main") {
-            window
-                .set_skip_taskbar(!visible)
-                .map_err(|e| format!("Failed to set panel visibility: {}", e))?;
-        } else {
-            eprintln!("Main window not found on Linux");
-        }
-    }
-
-    Ok(())
-}
-
-#[tauri::command]
-pub fn set_always_on_top<R: Runtime>(app: AppHandle<R>, enabled: bool) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("main") {
-        window
-            .set_always_on_top(enabled)
-            .map_err(|e| format!("Failed to set always on top: {}", e))?;
-        let _ = window.set_visible_on_all_workspaces(enabled);
-    } else {
-        return Err("Main window not found".to_string());
-    }
-
-    Ok(())
 }
 
 fn handle_toggle_dashboard<R: Runtime>(app: &AppHandle<R>) {

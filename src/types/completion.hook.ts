@@ -50,16 +50,10 @@ export interface UseCompletionReturn {
   loadConversation: (conversation: any) => void;
   startNewConversation: () => void;
 
-  // UI state management
-  messageHistoryOpen: boolean;
-  setMessageHistoryOpen: Dispatch<SetStateAction<boolean>>;
-  keepEngaged: boolean;
-  setKeepEngaged: Dispatch<SetStateAction<boolean>>;
-
   // Screenshot functionality
   screenshotConfiguration: any;
   setScreenshotConfiguration: Dispatch<SetStateAction<any>>;
-  handleScreenshotSubmit: (base64: string, prompt?: string) => Promise<void>;
+  handleScreenshotSubmit: (base64: string) => Promise<void>;
 
   // File selection and keyboard handling
   handleFileSelect: (e: ChangeEvent<HTMLInputElement>) => void;
@@ -67,7 +61,6 @@ export interface UseCompletionReturn {
   handlePaste: (e: ClipboardEvent) => Promise<void>;
 
   // UI helpers and computed values
-  isPopoverOpen: boolean;
   scrollAreaRef: RefObject<HTMLDivElement | null>;
   resizeWindow: (expanded: boolean) => Promise<void>;
 

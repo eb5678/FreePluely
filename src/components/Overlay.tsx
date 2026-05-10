@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { MousePointer2 } from "lucide-react";
 
 interface SelectionCoords {
   x: number;
@@ -23,7 +22,6 @@ const Overlay: React.FC<OverlayProps> = ({ monitorIndex }) => {
     height: 0,
     display: "none" as "none" | "block",
   });
-  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
   const [cursorVisible, setCursorVisible] = useState(false);
 
   const selectionRef = useRef<HTMLDivElement>(null);
@@ -68,7 +66,6 @@ const Overlay: React.FC<OverlayProps> = ({ monitorIndex }) => {
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsSelecting(true);
     setStartCoords({ x: e.clientX, y: e.clientY });
-    setCursorPosition({ x: e.clientX, y: e.clientY });
 
     setSelectionStyle({
       left: e.clientX,
@@ -83,8 +80,6 @@ const Overlay: React.FC<OverlayProps> = ({ monitorIndex }) => {
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    // Always update cursor position
-    setCursorPosition({ x: e.clientX, y: e.clientY });
 
     if (!cursorVisible) {
       setCursorVisible(true);
@@ -110,8 +105,6 @@ const Overlay: React.FC<OverlayProps> = ({ monitorIndex }) => {
   };
 
   const handleMouseUp = (e: React.MouseEvent) => {
-    // Update cursor position
-    setCursorPosition({ x: e.clientX, y: e.clientY });
 
     if (!isSelecting) return;
 
@@ -215,19 +208,6 @@ const Overlay: React.FC<OverlayProps> = ({ monitorIndex }) => {
             zIndex: 4000,
           }}
         />
-
-        {/* Custom Cursor */}
-        <div
-          className="fixed pointer-events-none z-[9999] transition-opacity duration-100"
-          style={{
-            left: cursorPosition.x,
-            top: cursorPosition.y,
-            transform: "translate(-2px, -2px)",
-            opacity: cursorVisible ? 1 : 0,
-          }}
-        >
-          <MousePointer2 className="w-5 h-5 drop-shadow-2xl fill-secondary stroke-primary" />
-        </div>
       </div>
     </>
   );

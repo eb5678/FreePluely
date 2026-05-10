@@ -52,17 +52,11 @@ const SystemPrompts = () => {
     prompt: "",
   });
 
-  /**
-   * Handle opening create dialog
-   */
   const handleCreateClick = () => {
     setForm({ name: "", prompt: "" });
     setIsCreateEditDialogOpen(true);
   };
 
-  /**
-   * Handle opening edit dialog
-   */
   const handleEditClick = (promptId: number) => {
     const promptToEdit = prompts.find((p) => p.id === promptId);
     if (promptToEdit) {
@@ -75,9 +69,6 @@ const SystemPrompts = () => {
     }
   };
 
-  /**
-   * Handle opening delete dialog
-   */
   const handleDeleteClick = (promptId: number) => {
     const promptToDelete = prompts.find((p) => p.id === promptId);
     if (promptToDelete) {
@@ -90,27 +81,21 @@ const SystemPrompts = () => {
     }
   };
 
-  /**
-   * Handle saving (create or update)
-   */
   const handleSave = async () => {
     try {
       setIsSaving(true);
       clearError();
 
       if (form.id) {
-        // Update existing prompt
         await updatePrompt(form.id, {
           name: form.name,
           prompt: form.prompt,
         });
       } else {
-        // Create new prompt
         const newPrompt = await createPrompt({
           name: form.name,
           prompt: form.prompt,
         });
-        // Auto-select the newly created prompt
         handleSelectPrompt(newPrompt.id);
       }
 
@@ -123,18 +108,12 @@ const SystemPrompts = () => {
     }
   };
 
-  /**
-   * Handle delete confirmation
-   */
   const handleDeleteConfirm = async (id: number) => {
     await deletePrompt(id);
     setForm({ name: "", prompt: "" });
     setIsDeleteDialogOpen(false);
   };
 
-  /**
-   * Handle AI generation
-   */
   const handleGenerate = (
     generatedPrompt: string,
     generatedPromptName: string
@@ -146,16 +125,14 @@ const SystemPrompts = () => {
     }));
   };
 
-  /**
-   * Handle selecting a prompt card
-   */
   const handleCardClick = (promptId: number) => {
-    handleSelectPrompt(promptId);
+    if (selectedPromptId === promptId) {
+      handleSelectPrompt(null);
+    } else {
+      handleSelectPrompt(promptId);
+    }
   };
 
-  /**
-   * Filter prompts based on search
-   */
   const filteredPrompts = prompts.filter(
     (prompt) =>
       prompt.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -167,13 +144,11 @@ const SystemPrompts = () => {
       title="System Prompts"
       description="Manage your AI behavior profiles and create new ones"
     >
-      {/* Error Display */}
       {error && (
         <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/10 p-3">
           <p className="text-sm text-destructive">{error}</p>
         </div>
       )}
-      {/* Search Bar */}
       <div className="flex items-center gap-2 justify-between">
         <div className="relative w-full md:w-1/2 lg:w-1/3 select-none">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -204,7 +179,7 @@ const SystemPrompts = () => {
             return (
               <Card
                 key={prompt.id}
-                className={`relative border  lg:border-2 shadow-none p-4 pb-10 gap-0 group cursor-pointer transition-all hover:shadow-sm ${
+                className={`relative border lg:border-2 shadow-none p-4 pb-10 gap-0 group cursor-pointer transition-all hover:shadow-sm ${
                   isSelected
                     ? "!bg-primary/5 dark:!bg-primary/10 border-primary"
                     : "!bg-black/5 dark:!bg-white/5 border-transparent"
@@ -272,7 +247,6 @@ const SystemPrompts = () => {
         </div>
       )}
 
-      {/* Create/Edit Dialog */}
       <CreateEditDialog
         isOpen={isCreateEditDialogOpen}
         onOpenChange={setIsCreateEditDialogOpen}
@@ -284,7 +258,6 @@ const SystemPrompts = () => {
         isSaving={isSaving}
       />
 
-      {/* Delete Confirmation Dialog */}
       <DeleteSystemPrompt
         isOpen={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}
@@ -292,8 +265,6 @@ const SystemPrompts = () => {
         promptName={form.name}
         onDelete={handleDeleteConfirm}
       />
-
-      {/* Pluely Default Prompts */}
     </PageLayout>
   );
 };

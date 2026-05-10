@@ -5,6 +5,11 @@ import {
   Button,
   Markdown,
   Textarea,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components";
 import { getConversationById } from "@/lib";
 import { ChatConversation } from "@/types";
@@ -23,7 +28,7 @@ import { useState, useEffect } from "react";
 import moment from "moment";
 import { useParams, useNavigate } from "react-router-dom";
 import { PageLayout } from "@/layouts";
-import { useHistory, useChatCompletion } from "@/hooks";
+import { useHistory, useChatCompletion, useSystemPrompts } from "@/hooks";
 import { useApp } from "@/contexts";
 import {
   DeleteConfirmationDialog,
@@ -50,6 +55,8 @@ const View = () => {
     isAttached,
   } = useHistory();
 
+  const { prompts, selectedPromptId, handleSelectPrompt } = useSystemPrompts();
+
   const completion = useChatCompletion(
     conversationId as string,
     messages,
@@ -64,16 +71,6 @@ const View = () => {
     getMessages();
   }, [conversationId]);
 
-  useEffect(() => {
-    if (messages?.messages.length) {
-      setTimeout(() => {
-        completion.messagesEndRef.current?.scrollIntoView({
-          behavior: "smooth",
-        });
-      }, 100);
-    }
-  }, [messages?.messages.length]);
-
   const handleDelete = async () => {
     await confirmDelete();
     navigate(-1);
@@ -87,6 +84,20 @@ const View = () => {
       description={`${messages?.messages.length} messages in this conversation`}
       rightSlot={
         <div className="flex flex-row items-center gap-2">
+          <Select 
+            value={selectedPromptId?.toString() || "none"} 
+            onValueChange={(val) => handleSelectPrompt(val === "none" ? null : Number(val))}
+          >
+            <SelectTrigger className="w-[180px] h-6 lg:h-8 text-[10px] lg:text-xs">
+               <SelectValue placeholder="No System Prompt" />
+            </SelectTrigger>
+            <SelectContent>
+               <SelectItem value="none">No System Prompt</SelectItem>
+               {prompts.map(p => (
+                  <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+               ))}
+            </SelectContent>
+          </Select>
           <Button
             variant="outline"
             title="Open this conversation in overlay"
@@ -103,8 +114,7 @@ const View = () => {
               </>
             ) : (
               <>
-                Open in Overlay{" "}
-                <MessageCircleReplyIcon className="size-3 lg:size-4" />
+                Open in Overlay <MessageCircleReplyIcon className="size-3 lg:size-4" />
               </>
             )}
           </Button>
@@ -205,7 +215,6 @@ const View = () => {
         </div>
       )}
 
-      {/* Sticky Footer Input */}
       <div className="absolute bottom-0 left-0 right-0 bg-background/10 backdrop-blur">
         {completion.error && (
           <div className="px-4 pt-3 pb-0">

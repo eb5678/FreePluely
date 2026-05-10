@@ -4,24 +4,9 @@ import {
   SPEECH_TO_TEXT_PROVIDERS,
   STORAGE_KEYS,
 } from "@/config";
-import { getPlatform, safeLocalStorage } from "@/lib";
-import {
-  getCustomizableState,
-  setCustomizableState,
-  updateAppIconVisibility,
-  updateAlwaysOnTop,
-  updateAutostart,
-  CustomizableState,
-  DEFAULT_CUSTOMIZABLE_STATE,
-  CursorType,
-  updateCursorType,
-} from "@/lib/storage";
+import { safeLocalStorage } from "@/lib";
 import { IContextType, ScreenshotConfig, TYPE_PROVIDER } from "@/types";
 import curl2Json from "@bany/curl-to-json";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { enable, disable } from "@tauri-apps/plugin-autostart";
 import {
   ReactNode,
   createContext,
@@ -67,10 +52,10 @@ const AppContext = createContext<IContextType | undefined>(undefined);
 
 // Create the provider component
 export const AppProvider = ({ children }: { children: ReactNode }) => {
-  const [systemPrompt, setSystemPrompt] = useState<string>(
-    safeLocalStorage.getItem(STORAGE_KEYS.SYSTEM_PROMPT) ||
-      DEFAULT_SYSTEM_PROMPT
-  );
+  const [systemPrompt, setSystemPrompt] = useState<string>(() => {
+    const saved = safeLocalStorage.getItem(STORAGE_KEYS.SYSTEM_PROMPT);
+    return saved !== null ? saved : DEFAULT_SYSTEM_PROMPT;
+  });
 
   const [selectedAudioDevices, setSelectedAudioDevices] = useState<{
     input: { id: string; name: string };
@@ -120,14 +105,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [screenshotConfiguration, setScreenshotConfiguration] =
     useState<ScreenshotConfig>({
       mode: "manual",
-      autoPrompt: "Analyze this screenshot and provide insights",
       enabled: true,
     });
 
-  // Unified Customizable State
-  const [customizable, setCustomizable] = useState<CustomizableState>(
-    DEFAULT_CUSTOMIZABLE_STATE
-  );
   const [supportsImages, setSupportsImagesState] = useState<boolean>(() => {
     const stored = safeLocalStorage.getItem(STORAGE_KEYS.SUPPORTS_IMAGES);
     return stored === null ? true : stored === "true";
@@ -139,15 +119,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     safeLocalStorage.setItem(STORAGE_KEYS.SUPPORTS_IMAGES, String(value));
   };
 
-
   // Function to load AI, STT, system prompt and screenshot config data from storage
   const loadData = () => {
     // Load system prompt
     const savedSystemPrompt = safeLocalStorage.getItem(
       STORAGE_KEYS.SYSTEM_PROMPT
     );
-    if (savedSystemPrompt) {
-      setSystemPrompt(savedSystemPrompt || DEFAULT_SYSTEM_PROMPT);
+    if (savedSystemPrompt !== null) {
+      setSystemPrompt(savedSystemPrompt);
+    } else {
+      setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
     }
 
     // Load screenshot configuration
@@ -160,9 +141,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         if (typeof parsed === "object" && parsed !== null) {
           setScreenshotConfiguration({
             mode: parsed.mode || "manual",
-            autoPrompt:
-              parsed.autoPrompt ||
-              "Analyze this screenshot and provide insights",
             enabled: parsed.enabled !== undefined ? parsed.enabled : false,
           });
         }
@@ -205,30 +183,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       setSelectedSttProvider(JSON.parse(savedSelectedStt));
     }
 
-    // Load customizable state
-    const customizableState = getCustomizableState();
-    setCustomizable(customizableState);
-
-    updateCursor(customizableState.cursor.type || "invisible");
-
-    const stored = safeLocalStorage.getItem(STORAGE_KEYS.CUSTOMIZABLE);
-    if (!stored) {
-      // save the default state
-      setCustomizableState(customizableState);
-    } else {
-      // check if we need to update the schema
-      try {
-        const parsed = JSON.parse(stored);
-        if (!parsed.autostart) {
-          // save the merged state with new autostart property
-          setCustomizableState(customizableState);
-          updateCursor(customizableState.cursor.type || "invisible");
-        }
-      } catch (error) {
-        console.debug("Failed to check customizable state schema:", error);
-      }
-    }
-
     // Load selected audio devices
     const savedAudioDevices = safeLocalStorage.getItem(
       STORAGE_KEYS.SELECTED_AUDIO_DEVICES
@@ -245,113 +199,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const updateCursor = (type: CursorType | undefined) => {
-    try {
-      const currentWindow = getCurrentWindow();
-      const platform = getPlatform();
-      // For Linux, always use default cursor
-      if (platform === "linux") {
-        document.documentElement.style.setProperty("--cursor-type", "default");
-        return;
-      }
-      const windowLabel = currentWindow.label;
-
-      if (windowLabel === "dashboard") {
-        // For dashboard, always use default cursor
-        document.documentElement.style.setProperty("--cursor-type", "default");
-        return;
-      }
-
-      // For overlay windows (main, capture-overlay-*)
-      const safeType = type || "invisible";
-      const cursorValue = type === "invisible" ? "none" : safeType;
-      document.documentElement.style.setProperty("--cursor-type", cursorValue);
-    } catch (error) {
-      document.documentElement.style.setProperty("--cursor-type", "default");
-    }
-  };
-
   // Load data on mount
   useEffect(() => {
-    // Load data
     loadData();
-  }, []);
-
-  // Handle customizable settings on state changes
-  useEffect(() => {
-    const applyCustomizableSettings = async () => {
-      try {
-        await Promise.all([
-          invoke("set_app_icon_visibility", {
-            visible: customizable.appIcon.isVisible,
-          }),
-          invoke("set_always_on_top", {
-            enabled: customizable.alwaysOnTop.isEnabled,
-          }),
-        ]);
-      } catch (error) {
-        console.error("Failed to apply customizable settings:", error);
-      }
-    };
-
-    applyCustomizableSettings();
-  }, [customizable]);
-
-  useEffect(() => {
-    const initializeAutostart = async () => {
-      try {
-        const autostartInitialized = safeLocalStorage.getItem(
-          STORAGE_KEYS.AUTOSTART_INITIALIZED
-        );
-
-        // Only apply autostart on the very first launch
-        if (!autostartInitialized) {
-          const autostartEnabled = customizable?.autostart?.isEnabled ?? true;
-
-          if (autostartEnabled) {
-            await enable();
-          } else {
-            await disable();
-          }
-
-          // Mark as initialized so this never runs again
-          safeLocalStorage.setItem(STORAGE_KEYS.AUTOSTART_INITIALIZED, "true");
-        }
-      } catch (error) {
-        console.debug("Autostart initialization skipped:", error);
-      }
-    };
-
-    initializeAutostart();
-  }, []);
-
-  // Listen for app icon hide/show events when window is toggled
-  useEffect(() => {
-    const handleAppIconVisibility = async (isVisible: boolean) => {
-      try {
-        await invoke("set_app_icon_visibility", { visible: isVisible });
-      } catch (error) {
-        console.error("Failed to set app icon visibility:", error);
-      }
-    };
-
-    const unlistenHide = listen("handle-app-icon-on-hide", async () => {
-      const currentState = getCustomizableState();
-      // Only hide app icon if user has set it to hide mode
-      if (!currentState.appIcon.isVisible) {
-        await handleAppIconVisibility(false);
-      }
-    });
-
-    const unlistenShow = listen("handle-app-icon-on-show", async () => {
-      // Always show app icon when window is shown, regardless of user setting
-      await handleAppIconVisibility(true);
-    });
-
-    return () => {
-      unlistenHide.then((fn) => fn());
-      unlistenShow.then((fn) => fn());
-    };
   }, []);
 
   // Listen to storage events for real-time sync (e.g., multi-tab)
@@ -369,7 +219,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         e.key === STORAGE_KEYS.SELECTED_STT_PROVIDER ||
         e.key === STORAGE_KEYS.SYSTEM_PROMPT ||
         e.key === STORAGE_KEYS.SCREENSHOT_CONFIG ||
-        e.key === STORAGE_KEYS.CUSTOMIZABLE ||
         e.key === STORAGE_KEYS.SELECTED_AUDIO_DEVICES
       ) {
         loadData();
@@ -473,54 +322,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setSelectedSttProvider((prev) => ({ ...prev, provider, variables }));
   };
 
-  // Toggle handlers
-  const toggleAppIconVisibility = async (isVisible: boolean) => {
-    const newState = updateAppIconVisibility(isVisible);
-    setCustomizable(newState);
-    try {
-      await invoke("set_app_icon_visibility", { visible: isVisible });
-      loadData();
-    } catch (error) {
-      console.error("Failed to toggle app icon visibility:", error);
-    }
-  };
-
-  const toggleAlwaysOnTop = async (isEnabled: boolean) => {
-    const newState = updateAlwaysOnTop(isEnabled);
-    setCustomizable(newState);
-    try {
-      await invoke("set_always_on_top", { enabled: isEnabled });
-      loadData();
-    } catch (error) {
-      console.error("Failed to toggle always on top:", error);
-    }
-  };
-
-  const toggleAutostart = async (isEnabled: boolean) => {
-    const newState = updateAutostart(isEnabled);
-    setCustomizable(newState);
-    try {
-      if (isEnabled) {
-        await enable();
-      } else {
-        await disable();
-      }
-      loadData();
-    } catch (error) {
-      console.error("Failed to toggle autostart:", error);
-      const revertedState = updateAutostart(!isEnabled);
-      setCustomizable(revertedState);
-    }
-  };
-
-  const setCursorType = (type: CursorType) => {
-    setCustomizable((prev) => ({ ...prev, cursor: { type } }));
-    updateCursor(type);
-    updateCursorType(type);
-    loadData();
-  };
-
-  // Create the context value (extend IContextType accordingly)
   const value: IContextType = {
     systemPrompt,
     setSystemPrompt,
@@ -534,14 +335,9 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     onSetSelectedSttProvider,
     screenshotConfiguration,
     setScreenshotConfiguration,
-    customizable,
-    toggleAppIconVisibility,
-    toggleAlwaysOnTop,
-    toggleAutostart,
     loadData,
     selectedAudioDevices,
     setSelectedAudioDevices,
-    setCursorType,
     supportsImages,
     setSupportsImages,
   };
@@ -549,7 +345,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
 
-// Create a hook to access the context
 export const useApp = () => {
   const context = useContext(AppContext);
 

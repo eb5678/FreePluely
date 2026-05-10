@@ -23,8 +23,8 @@ export const AudioRecorder = ({
   const [duration, setDuration] = useState(0);
 
   const startTimeRef = useRef<number>(0);
-  const durationIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const maxDurationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const durationIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxDurationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const unlistenRef = useRef<any>(null);
 
   const cleanup = useCallback(async () => {

@@ -1,15 +1,11 @@
-import { Card, CustomCursor, Button } from "@/components";
+import { Card, Button } from "@/components";
 import { Completion } from "./components";
 import { useApp } from "@/hooks";
-import { useApp as useAppContext } from "@/contexts";
 import { SparklesIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { getPlatform } from "@/lib";
 
 const App = () => {
   const { isHidden } = useApp();
-  const { customizable } = useAppContext();
-  const platform = getPlatform();
 
   const openDashboard = async () => {
     try {
@@ -39,10 +35,6 @@ const App = () => {
             </Button>
           </div>
         </Card>
-        
-        {customizable.cursor.type === "invisible" && platform !== "linux" ? (
-          <CustomCursor />
-        ) : null}
       </div>
   );
 };

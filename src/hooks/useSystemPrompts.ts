@@ -10,7 +10,7 @@ import type {
   SystemPromptInput,
   UpdateSystemPromptInput,
 } from "@/types";
-import { DEFAULT_SYSTEM_PROMPT, STORAGE_KEYS } from "@/config";
+import { STORAGE_KEYS } from "@/config";
 import { safeLocalStorage } from "@/lib";
 import { useApp } from "@/contexts";
 
@@ -28,9 +28,6 @@ export const useSystemPrompts = () => {
     }
   );
 
-  /**
-   * Fetch all system prompts from database
-   */
   const fetchPrompts = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -47,9 +44,6 @@ export const useSystemPrompts = () => {
     }
   }, []);
 
-  /**
-   * Create a new system prompt
-   */
   const createPrompt = useCallback(
     async (input: SystemPromptInput): Promise<SystemPrompt> => {
       try {
@@ -68,9 +62,6 @@ export const useSystemPrompts = () => {
     [fetchPrompts]
   );
 
-  /**
-   * Update an existing system prompt
-   */
   const updatePrompt = useCallback(
     async (
       id: number,
@@ -92,9 +83,6 @@ export const useSystemPrompts = () => {
     [fetchPrompts]
   );
 
-  /**
-   * Delete a system prompt
-   */
   const deletePrompt = useCallback(
     async (id: number): Promise<void> => {
       try {
@@ -112,56 +100,43 @@ export const useSystemPrompts = () => {
     [fetchPrompts]
   );
 
-  /**
-   * Refresh prompts list
-   */
   const refreshPrompts = useCallback(async () => {
     await fetchPrompts();
   }, [fetchPrompts]);
 
-  /**
-   * Clear error state
-   */
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
-  // Fetch prompts on mount
   useEffect(() => {
     fetchPrompts();
   }, [fetchPrompts]);
 
-  /**
-   * Load selected prompt on mount and when prompts change
-   */
   useEffect(() => {
-    if (selectedPromptId && prompts.length > 0) {
+    if (selectedPromptId !== null && prompts.length > 0) {
       const selectedPrompt = prompts.find((p) => p.id === selectedPromptId);
       if (selectedPrompt) {
         setSystemPrompt(selectedPrompt.prompt);
       } else {
-        // Selected prompt was deleted, reset to default
         setSelectedPromptId(null);
         safeLocalStorage.removeItem(STORAGE_KEYS.SELECTED_SYSTEM_PROMPT_ID);
-        const currentPrompt = safeLocalStorage.getItem(
-          STORAGE_KEYS.SYSTEM_PROMPT
-        );
-        if (!currentPrompt) {
-          setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
-          safeLocalStorage.setItem(
-            STORAGE_KEYS.SYSTEM_PROMPT,
-            DEFAULT_SYSTEM_PROMPT
-          );
-        }
+        setSystemPrompt("");
+        safeLocalStorage.setItem(STORAGE_KEYS.SYSTEM_PROMPT, "");
       }
     }
   }, [prompts, selectedPromptId, setSystemPrompt]);
 
-  /**
-   * Handle selecting a prompt
-   */
   const handleSelectPrompt = useCallback(
-    (promptId: number) => {
+    (promptId: number | null) => {
+      if (promptId === null) {
+         setSystemPrompt("");
+         setSelectedPromptId(null);
+         safeLocalStorage.removeItem(STORAGE_KEYS.SYSTEM_PROMPT);
+         safeLocalStorage.removeItem(STORAGE_KEYS.SELECTED_SYSTEM_PROMPT_ID);
+         safeLocalStorage.removeItem("selected_pluely_prompt");
+         return;
+      }
+
       const selectedPrompt = prompts.find((p) => p.id === promptId);
       if (selectedPrompt) {
         setSystemPrompt(selectedPrompt.prompt);
@@ -174,7 +149,6 @@ export const useSystemPrompts = () => {
           STORAGE_KEYS.SELECTED_SYSTEM_PROMPT_ID,
           promptId.toString()
         );
-        // Clear any selected Pluely prompt when user selects their own prompt
         safeLocalStorage.removeItem("selected_pluely_prompt");
       }
     },

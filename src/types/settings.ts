@@ -42,7 +42,6 @@ export type ScreenshotMode = "auto" | "manual";
 // Screenshot configuration types
 export interface ScreenshotConfig {
   mode: ScreenshotMode;
-  autoPrompt: string;
   enabled: boolean;
 }
 

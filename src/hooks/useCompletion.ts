@@ -12,13 +12,11 @@ import {
   generateConversationId,
   generateMessageId,
   generateRequestId,
-  getResponseSettings,
   fetchSTT,
 } from "@/lib";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
-// Types for completion
 interface AttachedFile {
   id: string;
   name: string;
@@ -79,10 +77,8 @@ export const useCompletion = () => {
   const [micOpen, setMicOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [messageHistoryOpen, setMessageHistoryOpen] = useState(false);
   const [isFilesPopoverOpen, setIsFilesPopoverOpen] = useState(false);
   const [isScreenshotLoading, setIsScreenshotLoading] = useState(false);
-  const [keepEngaged, setKeepEngaged] = useState(false);
   
   const inputRef = useRef<HTMLInputElement | null>(null);
   const isProcessingScreenshotRef = useRef(false);
@@ -155,11 +151,9 @@ export const useCompletion = () => {
         }));
       }
 
-      // Generate unique request ID
       const requestId = generateRequestId();
       currentRequestIdRef.current = requestId;
 
-      // Cancel any existing request
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -168,13 +162,11 @@ export const useCompletion = () => {
       const signal = abortControllerRef.current.signal;
 
       try {
-        // Prepare message history for the AI
         const messageHistory = state.conversationHistory.map((msg) => ({
           role: msg.role,
           content: msg.content,
         }));
 
-        // Handle image attachments
         const imagesBase64: string[] = [];
         if (state.attachedFiles.length > 0) {
           state.attachedFiles.forEach((file) => {
@@ -186,7 +178,6 @@ export const useCompletion = () => {
 
         let fullResponse = "";
 
-        // Check if AI provider is configured
         if (!selectedAIProvider.provider) {
           setState((prev) => ({
             ...prev,
@@ -206,7 +197,6 @@ export const useCompletion = () => {
           return;
         }
 
-        // Clear previous response and set loading state
         setState((prev) => ({
           ...prev,
           isLoading: true,
@@ -215,7 +205,6 @@ export const useCompletion = () => {
         }));
 
         try {
-          // Use the fetchAIResponse function with signal
           for await (const chunk of fetchAIResponse({
             provider: provider,
             selectedProvider: selectedAIProvider,
@@ -225,16 +214,12 @@ export const useCompletion = () => {
             imagesBase64,
             signal,
           })) {
-            // Only update if this is still the current request
             if (currentRequestIdRef.current !== requestId) {
-              return; // Request was superseded, stop processing
+              return;
             }
-
-            // Check if request was aborted
             if (signal.aborted) {
-              return; // Request was cancelled, stop processing
+              return;
             }
-
             fullResponse += chunk;
             setState((prev) => ({
               ...prev,
@@ -242,7 +227,6 @@ export const useCompletion = () => {
             }));
           }
         } catch (e: any) {
-          // Only show error if this is still the current request and not aborted
           if (currentRequestIdRef.current === requestId && !signal.aborted) {
             setState((prev) => ({
               ...prev,
@@ -253,26 +237,22 @@ export const useCompletion = () => {
           return;
         }
 
-        // Only proceed if this is still the current request
         if (currentRequestIdRef.current !== requestId || signal.aborted) {
           return;
         }
 
         setState((prev) => ({ ...prev, isLoading: false }));
 
-        // Focus input after AI response is complete
         setTimeout(() => {
           inputRef.current?.focus();
         }, 100);
 
-        // Save the conversation after successful completion
         if (fullResponse) {
           await saveCurrentConversation(
             input,
             fullResponse,
             state.attachedFiles
           );
-          // Clear input and attached files after saving
           setState((prev) => ({
             ...prev,
             input: "",
@@ -280,7 +260,6 @@ export const useCompletion = () => {
           }));
         }
       } catch (error) {
-        // Only show error if not aborted
         if (!signal?.aborted && currentRequestIdRef.current === requestId) {
           setState((prev) => ({
             ...prev,
@@ -300,7 +279,6 @@ export const useCompletion = () => {
     ]
   );
 
-  // === NATIVE MANUAL RECORDING LOGIC ===
   const unlistenAudioRef = useRef<any>(null);
   const unlistenErrorRef = useRef<any>(null);
   const isMicBusyRef = useRef<boolean>(false);
@@ -318,22 +296,17 @@ export const useCompletion = () => {
   }, []);
 
   const toggleManualRecording = useCallback(async () => {
-    // 1. HARD LOCK: Prevent rapid double-clicks from corrupting the stream
     if (isTranscribing || isMicBusyRef.current) return;
     
     isMicBusyRef.current = true;
 
     if (isRecording) {
-      // User clicked STOP
       setIsTranscribing(true);
       await invoke("manual_stop_continuous").catch(() => {});
-      // Do not unlock isMicBusyRef here; let the listeners handle the unlock below
     } else {
-      // User clicked START
       try {
         await cleanupAudio();
         
-        // Listener A: Capture Success payload
         unlistenAudioRef.current = await listen("speech-detected", async (event: any) => {
           setIsRecording(false);
           const base64Audio = event.payload as string;
@@ -363,20 +336,16 @@ export const useCompletion = () => {
           }
         });
 
-        // Listener B: Capture Error payload (e.g. empty audio from rapid clicking)
         unlistenErrorRef.current = await listen("audio-encoding-error", (event: any) => {
-          console.warn("Audio processing aborted (too short or empty):", event.payload);
-          // Failsafe reset!
+          console.warn("Audio processing aborted:", event.payload);
           setIsTranscribing(false);
           setIsRecording(false);
           isMicBusyRef.current = false;
           cleanupAudio();
         });
 
-        // Kill pre-existing streams just in case
         await invoke("stop_system_audio_capture").catch(() => {});
 
-        // Pass 'false' to enabled so it acts in manual mode
         const vadConfig = {
           enabled: false, 
           max_recording_duration_secs: 180,
@@ -390,7 +359,6 @@ export const useCompletion = () => {
         await invoke("start_system_audio_capture", { vadConfig, deviceId });
 
         setIsRecording(true);
-        // Add a tiny buffer before allowing them to click stop again
         setTimeout(() => { isMicBusyRef.current = false; }, 300);
         
       } catch (e) {
@@ -409,8 +377,6 @@ export const useCompletion = () => {
     };
   }, [cleanupAudio]);
 
-  // === GENERAL CHAT ACTIONS ===
-
   const cancel = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -421,7 +387,6 @@ export const useCompletion = () => {
   }, []);
 
   const reset = useCallback(() => {
-    if (keepEngaged) return;
     cancel();
     setState((prev) => ({
       ...prev,
@@ -430,7 +395,7 @@ export const useCompletion = () => {
       error: null,
       attachedFiles: [],
     }));
-  }, [cancel, keepEngaged]);
+  }, [cancel]);
 
   const fileToBase64 = useCallback(async (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -544,7 +509,6 @@ export const useCompletion = () => {
     [state.currentConversationId, state.conversationHistory]
   );
 
-  // Listen for conversation logic sync
   useEffect(() => {
     const handleConversationSelected = async (event: any) => {
       const { id } = event.detail;
@@ -567,11 +531,7 @@ export const useCompletion = () => {
           }));
         }
       } catch (error) {
-        console.error("Failed to load conversation:", error);
-        setState((prev) => ({
-          ...prev,
-          error: "Failed to load conversation. Please try again.",
-        }));
+         console.error("Failed to load conversation:", error);
       }
     };
 
@@ -590,15 +550,14 @@ export const useCompletion = () => {
       if (e.key === "pluely-conversation-selected" && e.newValue) {
         try {
           const data = JSON.parse(e.newValue);
-          const { id } = data;
-          if (id && typeof id === "string") {
-            const conversation = await getConversationById(id);
+          if (data.id && typeof data.id === "string") {
+            const conversation = await getConversationById(data.id);
             if (conversation) {
               loadConversation(conversation);
             }
           }
         } catch (error) {
-          console.error("Failed to parse conversation selection:", error);
+          console.error("Parse error:", error);
         }
       }
     };
@@ -743,7 +702,6 @@ export const useCompletion = () => {
             }
           }
         } else {
-          // Manual mode: Add to attached files
           const attachedFile: AttachedFile = {
             id: Date.now().toString(),
             name: `screenshot_${Date.now()}.png`,
@@ -758,7 +716,6 @@ export const useCompletion = () => {
           }));
         }
       } catch (error) {
-        console.error("Failed to process screenshot:", error);
         setState((prev) => ({
           ...prev,
           error:
@@ -824,49 +781,25 @@ export const useCompletion = () => {
     [state.attachedFiles.length, addFile]
   );
 
-  const isPopoverOpen =
-    state.isLoading ||
-    state.response !== "" ||
-    state.error !== null ||
-    keepEngaged;
-
   useEffect(() => {
-    resizeWindow(
-      isPopoverOpen || micOpen || messageHistoryOpen || isFilesPopoverOpen
-    );
-  }, [
-    isPopoverOpen,
-    micOpen,
-    messageHistoryOpen,
-    resizeWindow,
-    isFilesPopoverOpen,
-  ]);
-
-  useEffect(() => {
-    const responseSettings = getResponseSettings();
     if (
-      !keepEngaged &&
       state.response &&
-      scrollAreaRef.current &&
-      responseSettings.autoScroll
+      scrollAreaRef.current
     ) {
       const scrollElement = scrollAreaRef.current.querySelector(
         "[data-radix-scroll-area-viewport]"
       );
       if (scrollElement) {
         scrollElement.scrollTo({
-          top: scrollElement.scrollHeight,
-          behavior: "smooth",
+          top: scrollElement.scrollHeight
         });
       }
     }
-  }, [state.response, keepEngaged]);
+  }, [state.response]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isPopoverOpen) return;
-
-      const activeScrollRef = scrollAreaRef.current || scrollAreaRef.current;
+      const activeScrollRef = scrollAreaRef.current;
       const scrollElement = activeScrollRef?.querySelector(
         "[data-radix-scroll-area-viewport]"
       ) as HTMLElement;
@@ -883,27 +816,9 @@ export const useCompletion = () => {
         scrollElement.scrollBy({ top: -scrollAmount, behavior: "smooth" });
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isPopoverOpen, scrollAreaRef]);
-
-  useEffect(() => {
-    const handleToggleShortcut = (e: KeyboardEvent) => {
-      if (!isPopoverOpen) return;
-
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setKeepEngaged((prev) => !prev);
-        setTimeout(() => {
-          inputRef.current?.focus();
-        }, 100);
-      }
-    };
-
-    window.addEventListener("keydown", handleToggleShortcut);
-    return () => window.removeEventListener("keydown", handleToggleShortcut);
-  }, [isPopoverOpen]);
+  }, [scrollAreaRef]);
 
   const captureScreenshot = useCallback(async () => {
     if (!handleScreenshotSubmit) return;
@@ -945,13 +860,12 @@ export const useCompletion = () => {
         const base64 = await invoke("capture_to_base64");
 
         if (config.mode === "auto") {
-          await handleScreenshotSubmit(base64 as string, config.autoPrompt);
+          await handleScreenshotSubmit(base64 as string);
         } else if (config.mode === "manual") {
           await handleScreenshotSubmit(base64 as string);
         }
         screenshotInitiatedByThisContext.current = false;
       } else {
-        // Selection Mode
         isProcessingScreenshotRef.current = false;
         await invoke("start_screen_capture");
       }
@@ -977,7 +891,6 @@ export const useCompletion = () => {
         if (!screenshotInitiatedByThisContext.current) {
           return;
         }
-
         if (isProcessingScreenshotRef.current) {
           return;
         }
@@ -988,7 +901,7 @@ export const useCompletion = () => {
 
         try {
           if (config.mode === "auto") {
-            await handleScreenshotSubmit(base64 as string, config.autoPrompt);
+            await handleScreenshotSubmit(base64 as string);
           } else if (config.mode === "manual") {
             await handleScreenshotSubmit(base64 as string);
           }
@@ -1005,11 +918,8 @@ export const useCompletion = () => {
     };
 
     setupListener();
-
     return () => {
-      if (unlisten) {
-        unlisten();
-      }
+      if (unlisten) unlisten();
     };
   }, [handleScreenshotSubmit]);
 
@@ -1019,7 +929,6 @@ export const useCompletion = () => {
       isProcessingScreenshotRef.current = false;
       screenshotInitiatedByThisContext.current = false;
     });
-
     return () => {
       unlisten.then((fn) => fn());
     };
@@ -1035,7 +944,6 @@ export const useCompletion = () => {
     };
   }, []);
 
-  // Global Shortcuts Binding
   useEffect(() => {
     globalShortcuts.registerAudioCallback(toggleManualRecording);
     globalShortcuts.registerInputRef(inputRef.current as any);
@@ -1073,15 +981,12 @@ export const useCompletion = () => {
     conversationHistory: state.conversationHistory,
     loadConversation,
     startNewConversation,
-    messageHistoryOpen,
-    setMessageHistoryOpen,
     screenshotConfiguration,
     setScreenshotConfiguration,
     handleScreenshotSubmit,
     handleFileSelect,
     handleKeyPress,
     handlePaste,
-    isPopoverOpen,
     scrollAreaRef,
     resizeWindow,
     isFilesPopoverOpen,
@@ -1090,7 +995,5 @@ export const useCompletion = () => {
     inputRef,
     captureScreenshot,
     isScreenshotLoading,
-    keepEngaged,
-    setKeepEngaged,
   };
 };
