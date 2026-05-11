@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
 import { useApp } from "@/contexts";
-import {
-  extractVariables,
-  safeLocalStorage,
-  deleteAllConversations,
-} from "@/lib";
+import { extractVariables, safeLocalStorage, deleteAllConversations } from "@/lib";
 import { STORAGE_KEYS } from "@/config";
 
 export const useSettings = () => {
@@ -18,44 +14,26 @@ export const useSettings = () => {
     onSetSelectedAIProvider,
     onSetSelectedSttProvider,
   } = useApp();
-  const [variables, setVariables] = useState<{ key: string; value: string }[]>(
-    []
-  );
-  const [sttVariables, setSttVariables] = useState<
-    {
-      key: string;
-      value: string;
-    }[]
-  >([]);
-
+  
+  const [variables, setVariables] = useState<{ key: string; value: string }[]>([]);
+  const [sttVariables, setSttVariables] = useState<{ key: string; value: string }[]>([]);
   const [showDeleteConfirmDialog, setShowDeleteConfirmDialog] = useState(false);
 
   const handleScreenshotModeChange = (value: "auto" | "manual") => {
     const newConfig = { ...screenshotConfiguration, mode: value };
     setScreenshotConfiguration(newConfig);
-    safeLocalStorage.setItem(
-      STORAGE_KEYS.SCREENSHOT_CONFIG,
-      JSON.stringify(newConfig)
-    );
+    safeLocalStorage.setItem(STORAGE_KEYS.SCREENSHOT_CONFIG, JSON.stringify(newConfig));
   };
 
   const handleScreenshotEnabledChange = (enabled: boolean) => {
-    if (!enabled) {
-      return;
-    }
     const newConfig = { ...screenshotConfiguration, enabled };
     setScreenshotConfiguration(newConfig);
-    safeLocalStorage.setItem(
-      STORAGE_KEYS.SCREENSHOT_CONFIG,
-      JSON.stringify(newConfig)
-    );
+    safeLocalStorage.setItem(STORAGE_KEYS.SCREENSHOT_CONFIG, JSON.stringify(newConfig));
   };
 
   useEffect(() => {
     if (selectedAIProvider.provider) {
-      const provider = allAiProviders.find(
-        (p) => p.id === selectedAIProvider.provider
-      );
+      const provider = allAiProviders.find((p) => p.id === selectedAIProvider.provider);
       if (provider) {
         const variables = extractVariables(provider?.curl);
         setVariables(variables);
@@ -65,9 +43,7 @@ export const useSettings = () => {
 
   useEffect(() => {
     if (selectedSttProvider.provider) {
-      const provider = allSttProviders.find(
-        (p) => p.id === selectedSttProvider.provider
-      );
+      const provider = allSttProviders.find((p) => p.id === selectedSttProvider.provider);
       if (provider) {
         const variables = extractVariables(provider?.curl);
         setSttVariables(variables);

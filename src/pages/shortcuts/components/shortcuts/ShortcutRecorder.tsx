@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components";
 import { Check, X } from "lucide-react";
-import { getPlatform, formatShortcutKeyForDisplay, normalizeShortcutKey } from "@/lib";
+import { formatShortcutKeyForDisplay, normalizeShortcutKey } from "@/lib";
 
 interface ShortcutRecorderProps {
   onSave: (key: string) => void;
@@ -22,17 +22,15 @@ export const ShortcutRecorder = ({ onSave, onCancel, disabled = false, actionId 
       e.preventDefault();
       e.stopPropagation();
 
-      const platform = getPlatform();
       const mainKeyRaw = e.key.toLowerCase();
       const isModifierOnly = ["control", "alt", "shift", "meta", "os", "super", "command"].includes(mainKeyRaw);
 
       const keys: string[] = [];
-      // Explicitly allow Linux 'Alt'
       if (e.altKey) keys.push("alt");
       if (e.ctrlKey) keys.push("ctrl");
       if (e.shiftKey) keys.push("shift");
       if (e.metaKey || ["meta", "os", "super", "command"].includes(mainKeyRaw)) {
-         keys.push(platform === "macos" ? "cmd" : "super");
+         keys.push("super");
       }
 
       if (!isModifierOnly) {
@@ -57,7 +55,7 @@ export const ShortcutRecorder = ({ onSave, onCancel, disabled = false, actionId 
         setRecordedKeys(finalKeysArray);
         setError("");
       } else {
-        const hasModifier = finalKeysArray.some(k => ["super", "cmd", "ctrl", "alt", "shift"].includes(k));
+        const hasModifier = finalKeysArray.some(k => ["super", "ctrl", "alt", "shift"].includes(k));
         if (hasModifier && !isModifierOnly) {
           setRecordedKeys(finalKeysArray);
           setError("");

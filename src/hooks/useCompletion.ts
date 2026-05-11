@@ -83,7 +83,6 @@ export const useCompletion = () => {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const isProcessingScreenshotRef = useRef(false);
   const screenshotConfigRef = useRef(screenshotConfiguration);
-  const hasCheckedPermissionRef = useRef(false);
   const screenshotInitiatedByThisContext = useRef(false);
 
   const { resizeWindow } = useWindowResize();
@@ -810,10 +809,10 @@ export const useCompletion = () => {
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        scrollElement.scrollBy({ top: scrollAmount, behavior: "smooth" });
+        scrollElement.scrollBy({ top: scrollAmount, behavior: "auto" });
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        scrollElement.scrollBy({ top: -scrollAmount, behavior: "smooth" });
+        scrollElement.scrollBy({ top: -scrollAmount, behavior: "auto" });
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -828,34 +827,6 @@ export const useCompletion = () => {
     setIsScreenshotLoading(true);
 
     try {
-      const platform = navigator.platform.toLowerCase();
-      if (platform.includes("mac") && !hasCheckedPermissionRef.current) {
-        const {
-          checkScreenRecordingPermission,
-          requestScreenRecordingPermission,
-        } = await import("tauri-plugin-macos-permissions-api");
-
-        const hasPermission = await checkScreenRecordingPermission();
-
-        if (!hasPermission) {
-          await requestScreenRecordingPermission();
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          const hasPermissionNow = await checkScreenRecordingPermission();
-
-          if (!hasPermissionNow) {
-            setState((prev) => ({
-              ...prev,
-              error:
-                "Screen Recording permission required. Please enable it in System Settings > Privacy & Security.",
-            }));
-            setIsScreenshotLoading(false);
-            screenshotInitiatedByThisContext.current = false;
-            return;
-          }
-        }
-        hasCheckedPermissionRef.current = true;
-      }
-
       if (config.enabled) {
         const base64 = await invoke("capture_to_base64");
 

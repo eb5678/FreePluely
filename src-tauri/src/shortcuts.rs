@@ -7,10 +7,8 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 use tokio::time::{sleep, Duration};
 
-#[cfg(target_os = "macos")]
-use tauri_nspanel::ManagerExt;
-
 use crate::window::show_dashboard_window;
+
 // State for window visibility
 pub struct WindowVisibility {
     #[allow(dead_code)]
@@ -353,14 +351,8 @@ fn handle_toggle_dashboard<R: Runtime>(app: &AppHandle<R>) {
     if let Some(dashboard_window) = app.get_webview_window("dashboard") {
         match dashboard_window.is_visible() {
             Ok(true) => {
-                #[cfg(target_os = "linux")]
                 if let Err(e) = dashboard_window.close() {
                     eprintln!("Failed to close dashboard window: {}", e);
-                }
-                
-                #[cfg(not(target_os = "linux"))]
-                if let Err(e) = dashboard_window.hide() {
-                    eprintln!("Failed to hide dashboard window: {}", e);
                 }
             }
             Ok(false) => {

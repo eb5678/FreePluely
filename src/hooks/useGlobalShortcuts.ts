@@ -1,8 +1,7 @@
-// src/hooks/useGlobalShortcuts.ts
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef } from "react";
-import { getShortcutsConfig, getPlatform } from "@/lib";
+import { getShortcutsConfig } from "@/lib";
 
 let globalEventListeners: { [key: string]: UnlistenFn | undefined } = {};
 let lastScreenshotEventTime = 0;
@@ -20,7 +19,6 @@ export const useGlobalShortcuts = () => {
   const systemAudioCallbackRef = useRef<(() => void) | null>(null);
   const customShortcutCallbacksRef = useRef<Map<string, () => void>>(new Map());
 
-  // ... (keep the checkShortcutsRegistered, getShortcuts, updateShortcuts callbacks unchanged)
   const checkShortcutsRegistered = useCallback(async (): Promise<boolean> => {
     try {
       return await invoke<boolean>("check_shortcuts_registered");
@@ -77,7 +75,6 @@ export const useGlobalShortcuts = () => {
     globalCustomShortcutCallbacks.delete(actionId);
   }, []);
 
-  // 1. GUI TAURI LISTENERS
   useEffect(() => {
     const setupEventListeners = async () => {
       try {
@@ -125,31 +122,30 @@ export const useGlobalShortcuts = () => {
     setupEventListeners();
   }, []);
 
-  // 2. NATIVE DOM KEYDOWN FALLBACK (Fixes Wayland & Blocks Inspector)
   useEffect(() => {
     const handleLocalKeyDown = (e: KeyboardEvent) => {
-      // Ignore raw modifier keypresses without characters
       if (["Control", "Shift", "Alt", "Meta", "Super", "Escape"].includes(e.key)) return;
       const keys: string[] = [];
-      const platform = getPlatform();
-      if (e.metaKey) keys.push(platform === "macos" ? "cmd" : "super");
+      if (e.metaKey) keys.push("super");
       if (e.ctrlKey) keys.push("ctrl");
       if (e.altKey) keys.push("alt");
       if (e.shiftKey) keys.push("shift");
+      
       let mainKey = e.key.toLowerCase();
       const specialMap: Record<string, string> = {
         arrowup: "up", arrowdown: "down", arrowleft: "left", arrowright: "right",
         " ": "space", escape: "esc", enter: "return", "\\": "backslash"
       };
+      
       if (mainKey && specialMap[mainKey]) mainKey = specialMap[mainKey];
       if (mainKey) keys.push(mainKey);
-      const pressedCombo = Array.from(new Set(keys)).join("+"); // deduplicate
+      
+      const pressedCombo = Array.from(new Set(keys)).join("+"); 
       const config = getShortcutsConfig();
       for (const [actionId, binding] of Object.entries(config.bindings)) {
         if (binding.enabled && binding.key === pressedCombo) {
-          e.preventDefault(); // STOP native webkit bindings
+          e.preventDefault(); 
           e.stopPropagation();
-          // Execute action based on the map
           switch (actionId) {
             case "audio_recording":
               if (globalAudioCallback) globalAudioCallback();
@@ -174,7 +170,6 @@ export const useGlobalShortcuts = () => {
         }
       }
     };
-    // Use capturing phase (true) to intercept the event BEFORE the browser does
     window.addEventListener("keydown", handleLocalKeyDown, true);
     return () => window.removeEventListener("keydown", handleLocalKeyDown, true);
   }, []);

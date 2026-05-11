@@ -9,22 +9,23 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "Pluely - AI Assistant",
         "width": 600,
         "height": 600,
         "decorations": true,
-        "transparent": true,
+        "transparent": false,
+        "theme": "Dark",
+        "backgroundColor": "#000000",
         "alwaysOnTop": true,
         "resizable": true,
         "visibleOnAllWorkspaces": true,
         "skipTaskbar": true,
         "visible": true,
         "center": false,
-        "contentProtected": true,
-        "focus": false,
+        "contentProtected": false,
+        "focus": true,
         "acceptFirstMouse": true,
         "shadow": false
       }
@@ -36,8 +37,7 @@
     "createUpdaterArtifacts": false,
     "targets": "deb",
     "icon": ["icons/128x128.png"],
-    "resources": ["info.plist", "pluely.desktop"],
-    "macOS": { "minimumSystemVersion": "10.13" }
+    "resources": ["pluely.desktop"]
   },
   "plugins": {
     "sql": {

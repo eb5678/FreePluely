@@ -1,5 +1,3 @@
-#[cfg(target_os = "macos")]
-use tauri::LogicalPosition;
 use tauri::{App, AppHandle, Manager, Runtime, WebviewWindow, WebviewWindowBuilder};
 
 const TOP_OFFSET: i32 = 54;
@@ -10,13 +8,18 @@ pub fn setup_main_window(app: &mut App) -> Result<(), Box<dyn std::error::Error>
         .or_else(|| app.get_webview_window("pluely"))
         .or_else(|| app.webview_windows().values().next().cloned())
         .ok_or("No window found")?;
-
     position_window_top_center(&window, TOP_OFFSET)?;
     
-    // Explicitly enforce window stickiness and priority for Wayland compositors
-    let _ = window.set_always_on_top(true);
+    // Explicitly enforce priority for Wayland compositors (always_on_top shifted to be managed natively by Cosmic)
     let _ = window.set_visible_on_all_workspaces(true);
-
+    
+    // Pre-create the dashboard window in the background to make opening it instantaneous
+    let app_handle = app.handle().clone();
+    if app_handle.get_webview_window("dashboard").is_none() {
+        if let Err(e) = create_dashboard_window(&app_handle) {
+            eprintln!("Failed to pre-create dashboard window: {}", e);
+        }
+    }
     Ok(())
 }
 
@@ -53,11 +56,7 @@ pub fn toggle_dashboard(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(dashboard_window) = app.get_webview_window("dashboard") {
         match dashboard_window.is_visible() {
             Ok(true) => {
-                #[cfg(target_os = "linux")]
                 dashboard_window.close().map_err(|e| format!("Failed to close window: {}", e))?;
-                
-                #[cfg(not(target_os = "linux"))]
-                dashboard_window.hide().map_err(|e| format!("Failed to hide window: {}", e))?;
             }
             Ok(false) => {
                 show_dashboard_window(&app)?;
@@ -92,52 +91,31 @@ pub fn create_dashboard_window<R: Runtime>(
 ) -> Result<WebviewWindow<R>, tauri::Error> {
     let base_builder = WebviewWindowBuilder::new(app, "dashboard", tauri::WebviewUrl::App("/chats".into()));
 
-    #[cfg(target_os = "macos")]
     let base_builder = base_builder
         .title("Pluely")
         .center()
         .decorations(true)
-        .transparent(true)
-        .inner_size(1200.0, 800.0)
-        .min_inner_size(800.0, 600.0)
-        .hidden_title(true)
-        .title_bar_style(tauri::TitleBarStyle::Overlay);
-
-    #[cfg(not(target_os = "macos"))]
-    let base_builder = base_builder
-        .title("Pluely")
-        .center()
-        .decorations(true)
-        .transparent(true)
+        .transparent(false)
         .inner_size(800.0, 600.0)
-        .min_inner_size(800.0, 600.0);
+        .min_inner_size(800.0, 600.0)
+        .visible(false);
 
     let window = base_builder.build()?;
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        let window_clone = window.clone();
-        window.on_window_event(move |event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window_clone.hide();
-            }
-        });
-    }
 
     Ok(window)
 }
 
 pub fn show_dashboard_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("dashboard") {
-        w.show().map_err(|e| format!("Failed to show window: {}", e))?;
-        w.set_focus().map_err(|e| format!("Failed to focus window: {}", e))?;
+    let w = if let Some(w) = app.get_webview_window("dashboard") {
+        w
     } else {
-        let _w = create_dashboard_window(app).map_err(|e| format!("Failed to create window: {}", e))?;
-    }
+        create_dashboard_window(app).map_err(|e| format!("Failed to create window: {}", e))?
+    };
+
+    w.show().map_err(|e| format!("Failed to show window: {}", e))?;
+    w.set_focus().map_err(|e| format!("Failed to focus window: {}", e))?;
 
     if let Some(main) = app.get_webview_window("main") {
-        let _ = main.set_always_on_top(true);
         let _ = main.set_visible_on_all_workspaces(true);
     }
     

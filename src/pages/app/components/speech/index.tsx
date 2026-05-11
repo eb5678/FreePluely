@@ -65,7 +65,7 @@ export const SystemAudio = (props: useSystemAudioType) => {
     scrollAreaRef,
   } = props;
 
-  const {supportsImages } = useApp();
+  const { supportsImages } = useApp();
 
   // View mode toggle
   const [conversationMode, setConversationMode] = useState(false);
@@ -77,12 +77,11 @@ export const SystemAudio = (props: useSystemAudioType) => {
   const isVadMode = vadConfig.enabled;
   const hasResponse = lastAIResponse || isAIProcessing;
 
-  // Keyboard shortcut for Cmd+K to toggle view mode
+  // Keyboard shortcut for Cmd+K (Meta+K) or Ctrl+K to toggle view mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isPopoverOpen) return;
 
-      // Cmd+K or Ctrl+K to toggle view mode
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setConversationMode((prev) => !prev);
@@ -121,27 +120,8 @@ export const SystemAudio = (props: useSystemAudioType) => {
 
     setIsCapturingScreenshot(true);
     try {
-      // Check screen recording permission on macOS
-      const platform = navigator.platform.toLowerCase();
-      if (platform.includes("mac")) {
-        const {
-          checkScreenRecordingPermission,
-          requestScreenRecordingPermission,
-        } = await import("tauri-plugin-macos-permissions-api");
-
-        const hasPermission = await checkScreenRecordingPermission();
-        if (!hasPermission) {
-          await requestScreenRecordingPermission();
-          setIsCapturingScreenshot(false);
-          return;
-        }
-      }
-
-      // Capture screenshot
-      const base64: string = await invoke("capture_screenshot", {
-        screenId: null, // Use default screen
-      });
-
+      // Capture screenshot natively in Linux handling
+      const base64: string = await invoke("capture_to_base64");
       setScreenshotImage(base64);
     } catch (err) {
       console.error("Failed to capture screenshot:", err);

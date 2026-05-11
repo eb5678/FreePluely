@@ -795,10 +795,10 @@ export function useSystemAudio() {
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        scrollElement.scrollBy({ top: scrollAmount, behavior: "smooth" });
+        scrollElement.scrollBy({ top: scrollAmount, behavior: "auto" });
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        scrollElement.scrollBy({ top: -scrollAmount, behavior: "smooth" });
+        scrollElement.scrollBy({ top: -scrollAmount, behavior: "auto" });
       }
     };
 

@@ -1,93 +1,49 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { STORAGE_KEYS } from "@/config/";
 
-type Theme = "dark" | "light" | "system";
-
-type ThemeProviderProps = {
-  children: React.ReactNode;
-  defaultTheme?: Theme;
-  storageKey?: string;
-};
+type Theme = "dark";
 
 type ThemeProviderState = {
   theme: Theme;
   setTheme: (theme: Theme) => void;
   transparency: number;
   onSetTransparency: (transparency: number) => void;
+  isSystemThemeDark: boolean;
 };
 
 const initialState: ThemeProviderState = {
-  theme: "system",
+  theme: "dark",
   setTheme: () => null,
   transparency: 10,
   onSetTransparency: () => null,
+  isSystemThemeDark: true,
 };
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 
-export function ThemeProvider({
-  children,
-  defaultTheme = "system",
-  storageKey = STORAGE_KEYS.THEME,
-  ...props
-}: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
-  );
+export function ThemeProvider({ children, ...props }: any) {
   const [transparency, setTransparency] = useState<number>(() => {
     const stored = localStorage.getItem(STORAGE_KEYS.TRANSPARENCY);
     return stored ? parseInt(stored, 10) : 10;
   });
-
-  const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-  const isSystemThemeDark = mediaQuery.matches;
 
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === STORAGE_KEYS.TRANSPARENCY && e.newValue) {
         setTransparency(parseInt(e.newValue, 10));
       }
-      if (e.key === storageKey && e.newValue) {
-        setTheme(e.newValue as Theme);
-      }
     };
 
     window.addEventListener("storage", handleStorageChange);
     return () => window.removeEventListener("storage", handleStorageChange);
-  }, [storageKey]);
+  }, []);
 
+  // Hardcode Dark Theme App-wide
   useEffect(() => {
     const root = window.document.documentElement;
-
-    const applyTheme = (currentTheme: Theme) => {
-      root.classList.remove("light", "dark");
-
-      if (currentTheme === "system") {
-        const systemTheme = mediaQuery.matches ? "dark" : "light";
-        root.classList.add(systemTheme);
-      } else {
-        root.classList.add(currentTheme);
-      }
-    };
-
-    const updateTheme = () => {
-      if (theme === "system") {
-        applyTheme("system");
-      }
-    };
-
-    applyTheme(theme);
-
-    if (theme === "system") {
-      mediaQuery.addEventListener("change", updateTheme);
-    }
-
-    return () => {
-      if (theme === "system") {
-        mediaQuery.removeEventListener("change", updateTheme);
-      }
-    };
-  }, [theme]);
+    root.classList.remove("light", "system");
+    root.classList.add("dark");
+  }, []);
 
   // Apply transparency globally
   useEffect(() => {
@@ -111,12 +67,9 @@ export function ThemeProvider({
   };
 
   const value = {
-    theme,
-    setTheme: (newTheme: Theme) => {
-      localStorage.setItem(storageKey, newTheme);
-      setTheme(newTheme);
-    },
-    isSystemThemeDark,
+    theme: "dark" as Theme,
+    setTheme: () => {},
+    isSystemThemeDark: true,
     transparency,
     onSetTransparency,
   };

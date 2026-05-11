@@ -2,11 +2,7 @@ export interface ShortcutAction {
   id: string;
   name: string;
   description: string;
-  defaultKey: {
-    macos: string;
-    windows: string;
-    linux: string;
-  };
+  defaultKey: string;
 }
 
 export interface ShortcutBinding {

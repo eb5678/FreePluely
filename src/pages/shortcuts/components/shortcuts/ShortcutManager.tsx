@@ -8,7 +8,6 @@ import {
   resetShortcutsToDefaults,
   checkShortcutConflicts,
   formatShortcutKeyForDisplay,
-  getPlatformDefaultKey,
 } from "@/lib";
 import { ShortcutAction, ShortcutBinding } from "@/types";
 import { invoke } from "@tauri-apps/api/core";
@@ -147,7 +146,7 @@ export const ShortcutManager = () => {
         {actions.map((action) => {
           const binding = bindings[action.id] || {
             action: action.id,
-            key: getPlatformDefaultKey(action),
+            key: action.defaultKey,
             enabled: true,
           };
           const isEditing = editingAction === action.id;

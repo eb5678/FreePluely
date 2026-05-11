@@ -13,7 +13,6 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
-// Types for completion
 interface AttachedFile {
   id: string;
   name: string;
@@ -78,13 +77,12 @@ export const useChatCompletion = (
   const currentRequestIdRef = useRef<string | null>(null);
   const isProcessingScreenshotRef = useRef(false);
   const screenshotConfigRef = useRef(screenshotConfiguration);
-  const hasCheckedPermissionRef = useRef(false);
   const screenshotInitiatedByThisContext = useRef(false);
 
   useEffect(() => {
     screenshotConfigRef.current = screenshotConfiguration;
   }, [screenshotConfiguration]);
-  
+
   const setInput = useCallback((value: string) => {
     setState((prev) => ({ ...prev, input: value }));
   }, []);
@@ -135,11 +133,9 @@ export const useChatCompletion = (
         }));
       }
 
-      // Generate unique request ID
       const requestId = generateRequestId();
       currentRequestIdRef.current = requestId;
 
-      // Cancel any existing request
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -148,13 +144,11 @@ export const useChatCompletion = (
       const signal = abortControllerRef.current.signal;
 
       try {
-        // Prepare message history for the AI
         const messageHistory = (messages?.messages || []).map((msg) => ({
           role: msg.role,
           content: msg.content,
         }));
 
-        // Handle image attachments
         const imagesBase64: string[] = [];
         if (state.attachedFiles.length > 0) {
           state.attachedFiles.forEach((file) => {
@@ -168,7 +162,6 @@ export const useChatCompletion = (
           (p) => p.id === selectedAIProvider.provider
         );
 
-        // Add user message to UI immediately
         const timestamp = Date.now();
         const userMsg: ChatMessage = {
           id: generateMessageId("user", timestamp),
@@ -183,7 +176,6 @@ export const useChatCompletion = (
         };
         setMessages(updatedMessages);
 
-        // Clear input and set loading state
         setState((prev) => ({
           ...prev,
           input: "",
@@ -195,7 +187,6 @@ export const useChatCompletion = (
         let fullResponse = "";
 
         try {
-          // Use the fetchAIResponse function with signal
           for await (const chunk of fetchAIResponse({
             provider: provider,
             selectedProvider: selectedAIProvider,
@@ -205,19 +196,16 @@ export const useChatCompletion = (
             imagesBase64,
             signal,
           })) {
-            // Only update if this is still the current request
             if (currentRequestIdRef.current !== requestId) {
-              return; // Request was superseded, stop processing
+              return;
             }
 
-            // Check if request was aborted
             if (signal.aborted) {
-              return; // Request was cancelled, stop processing
+              return;
             }
 
             fullResponse += chunk;
 
-            // Update the last message (assistant's response) in real-time
             const assistantMsg: ChatMessage = {
               id: generateMessageId("assistant", timestamp + MESSAGE_ID_OFFSET),
               role: "assistant",
@@ -230,25 +218,21 @@ export const useChatCompletion = (
               messages: [...updatedMessages.messages, assistantMsg],
             };
 
-            // Check if assistant message already exists
             const lastMessage =
               updatedWithResponse.messages[
                 updatedWithResponse.messages.length - 1
               ];
             if (lastMessage.role === "assistant") {
-              // Update existing assistant message
               updatedWithResponse.messages[
                 updatedWithResponse.messages.length - 1
               ] = assistantMsg;
             } else {
-              // Add new assistant message
               updatedWithResponse.messages.push(assistantMsg);
             }
 
             setMessages(updatedWithResponse);
           }
         } catch (e: any) {
-          // Only show error if this is still the current request and not aborted
           if (currentRequestIdRef.current === requestId && !signal.aborted) {
             setState((prev) => ({
               ...prev,
@@ -259,19 +243,16 @@ export const useChatCompletion = (
           return;
         }
 
-        // Only proceed if this is still the current request
         if (currentRequestIdRef.current !== requestId || signal.aborted) {
           return;
         }
 
         setState((prev) => ({ ...prev, isLoading: false }));
 
-        // Focus input after AI response is complete
         setTimeout(() => {
           inputRef.current?.focus();
         }, 100);
 
-        // Save the conversation after successful completion
         if (fullResponse) {
           const assistantMsg: ChatMessage = {
             id: generateMessageId("assistant", timestamp + MESSAGE_ID_OFFSET),
@@ -286,7 +267,6 @@ export const useChatCompletion = (
             assistantMsg,
           ];
 
-          // Get existing conversation if updating
           let existingConversation = null;
           if (conversationId) {
             try {
@@ -314,8 +294,6 @@ export const useChatCompletion = (
 
           try {
             await saveConversation(conversation);
-
-            // Reload conversation from database to ensure consistency
             const updatedConversation = await getConversationById(
               conversationId
             );
@@ -331,7 +309,6 @@ export const useChatCompletion = (
           }
         }
       } catch (error) {
-        // Only show error if not aborted
         if (!signal?.aborted && currentRequestIdRef.current === requestId) {
           setState((prev) => ({
             ...prev,
@@ -362,7 +339,6 @@ export const useChatCompletion = (
     setState((prev) => ({ ...prev, isLoading: false }));
   }, []);
 
-  // Helper function to convert file to base64
   const fileToBase64 = useCallback(async (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -387,7 +363,6 @@ export const useChatCompletion = (
       }
     });
 
-    // Reset input so same file can be selected again
     e.target.value = "";
   };
 
@@ -403,7 +378,6 @@ export const useChatCompletion = (
 
       try {
         if (prompt) {
-          // Auto mode: Submit directly to AI with screenshot
           const attachedFile: AttachedFile = {
             id: Date.now().toString(),
             name: `screenshot_${Date.now()}.png`,
@@ -412,17 +386,14 @@ export const useChatCompletion = (
             size: base64.length,
           };
 
-          // Store files temporarily and submit
           setState((prev) => ({
             ...prev,
             attachedFiles: [...prev.attachedFiles, attachedFile],
             input: prompt,
           }));
 
-          // Submit with the prompt and screenshot
           setTimeout(() => submit(prompt), 100);
         } else {
-          // Manual mode: Add to attached files
           const attachedFile: AttachedFile = {
             id: Date.now().toString(),
             name: `screenshot_${Date.now()}.png`,
@@ -467,7 +438,6 @@ export const useChatCompletion = (
 
   const handlePaste = useCallback(
     async (e: React.ClipboardEvent) => {
-      // Check if clipboard contains images
       const items = e.clipboardData?.items;
       if (!items) return;
 
@@ -475,7 +445,6 @@ export const useChatCompletion = (
         item.type.startsWith("image/")
       );
 
-      // If we have images, prevent default text pasting and process images
       if (hasImages) {
         e.preventDefault();
 
@@ -493,7 +462,6 @@ export const useChatCompletion = (
           }
         });
 
-        // Process all files
         await Promise.all(processedFiles.map((file) => addFile(file)));
       }
     },
@@ -504,57 +472,18 @@ export const useChatCompletion = (
     if (!handleScreenshotSubmit) return;
 
     const config = screenshotConfigRef.current;
-
-    // Mark that this context initiated the screenshot
     screenshotInitiatedByThisContext.current = true;
-
     setIsScreenshotLoading(true);
 
     try {
-      // Check screen recording permission on macOS
-      const platform = navigator.platform.toLowerCase();
-      if (platform.includes("mac") && !hasCheckedPermissionRef.current) {
-        const {
-          checkScreenRecordingPermission,
-          requestScreenRecordingPermission,
-        } = await import("tauri-plugin-macos-permissions-api");
-
-        const hasPermission = await checkScreenRecordingPermission();
-
-        if (!hasPermission) {
-          // Request permission
-          await requestScreenRecordingPermission();
-
-          // Wait a moment and check again
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-
-          const hasPermissionNow = await checkScreenRecordingPermission();
-
-          if (!hasPermissionNow) {
-            setState((prev) => ({
-              ...prev,
-              error:
-                "Screen Recording permission required. Please enable it by going to System Settings > Privacy & Security > Screen & System Audio Recording. If you don't see Pluely in the list, click the '+' button to add it. If it's already listed, make sure it's enabled. Then restart the app.",
-            }));
-            setIsScreenshotLoading(false);
-            screenshotInitiatedByThisContext.current = false;
-            return;
-          }
-        }
-        hasCheckedPermissionRef.current = true;
-      }
-
       if (config.enabled) {
         const base64 = await invoke("capture_to_base64");
 
         if (config.mode === "auto") {
-          // Auto mode: Submit directly to AI with the configured prompt
           await handleScreenshotSubmit(base64 as string);
         } else if (config.mode === "manual") {
-          // Manual mode: Add to attached files without prompt
           await handleScreenshotSubmit(base64 as string);
         }
-        // Reset flag after processing
         screenshotInitiatedByThisContext.current = false;
       } else {
         isProcessingScreenshotRef.current = false;
@@ -579,7 +508,6 @@ export const useChatCompletion = (
 
     const setupListener = async () => {
       unlisten = await listen("captured-selection", async (event: any) => {
-        // Only process if this context initiated the screenshot
         if (!screenshotInitiatedByThisContext.current) {
           return;
         }
@@ -594,10 +522,8 @@ export const useChatCompletion = (
 
         try {
           if (config.mode === "auto") {
-            // Auto mode: Submit directly to AI with the configured prompt
             await handleScreenshotSubmit(base64 as string);
           } else if (config.mode === "manual") {
-            // Manual mode: Add to attached files without prompt
             await handleScreenshotSubmit(base64 as string);
           }
         } catch (error) {
@@ -633,7 +559,6 @@ export const useChatCompletion = (
     };
   }, []);
 
-  // Cleanup abort controller on unmount
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {

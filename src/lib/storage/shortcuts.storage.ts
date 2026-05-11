@@ -5,23 +5,13 @@ import {
   ShortcutConflict,
   ShortcutAction,
 } from "@/types";
-import { getPlatform } from "@/lib";
-
-export const getPlatformDefaultKey = (action: ShortcutAction): string => {
-  const platform = getPlatform();
-  switch (platform) {
-    case "macos": return action.defaultKey.macos;
-    case "windows": return action.defaultKey.windows;
-    case "linux": return action.defaultKey.linux;
-  }
-};
 
 export const getDefaultShortcutsConfig = (): ShortcutsConfig => {
   const bindings: Record<string, ShortcutBinding> = {};
   DEFAULT_SHORTCUT_ACTIONS.forEach((action) => {
     bindings[action.id] = {
       action: action.id,
-      key: getPlatformDefaultKey(action),
+      key: action.defaultKey,
       enabled: true,
     };
   });
@@ -98,7 +88,7 @@ export const checkShortcutConflicts = (
 export const normalizeShortcutKey = (key: string): string => {
   const parts = key.toLowerCase().split("+").map(p => p.trim());
   const modifierPriority: Record<string, number> = { 
-    super: 1, cmd: 1, ctrl: 2, alt: 3, shift: 4 
+    super: 1, ctrl: 2, alt: 3, shift: 4 
   };
   return Array.from(new Set(parts))
     .sort((a, b) => {
@@ -144,7 +134,7 @@ export const addCustomShortcutAction = (
   }
   config.bindings[action.id] = {
     action: action.id,
-    key: getPlatformDefaultKey(action),
+    key: action.defaultKey,
     enabled: true,
   };
   setShortcutsConfig(config);
