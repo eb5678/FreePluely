@@ -13,13 +13,11 @@ pub fn setup_main_window(app: &mut App) -> Result<(), Box<dyn std::error::Error>
     // Explicitly enforce priority for Wayland compositors (always_on_top shifted to be managed natively by Cosmic)
     let _ = window.set_visible_on_all_workspaces(true);
     
-    // Pre-create the dashboard window in the background to make opening it instantaneous
-    let app_handle = app.handle().clone();
-    if app_handle.get_webview_window("dashboard").is_none() {
-        if let Err(e) = create_dashboard_window(&app_handle) {
-            eprintln!("Failed to pre-create dashboard window: {}", e);
-        }
-    }
+    // DELIBERATELY REMOVED the pre-creation of the dashboard window.
+    // Creating it `visible(false)` in the background on Linux/Wayland causes WebKitGTK 
+    // to miscalculate the Client-Side Decoration (CSD) hitboxes, rendering 
+    // the window controls unclickable until a resize/maximize occurs.
+    
     Ok(())
 }
 
@@ -98,7 +96,7 @@ pub fn create_dashboard_window<R: Runtime>(
         .transparent(false)
         .inner_size(800.0, 600.0)
         .min_inner_size(800.0, 600.0)
-        .visible(false);
+        .visible(true); // <--- Build as visible immediately to avoid Wayland CSD issues
 
     let window = base_builder.build()?;
 
@@ -114,6 +112,17 @@ pub fn show_dashboard_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Strin
 
     w.show().map_err(|e| format!("Failed to show window: {}", e))?;
     w.set_focus().map_err(|e| format!("Failed to focus window: {}", e))?;
+    
+    // In case the window already existed but was hidden, a tiny resizing trick 
+    // forces the Wayland compositor to recalculate the CSD bounds immediately.
+    // This is invisible to the user but resolves the interaction glitch completely.
+    if let Ok(size) = w.inner_size() {
+        let _ = w.set_size(tauri::Size::Physical(tauri::PhysicalSize {
+            width: size.width + 1,
+            height: size.height,
+        }));
+        let _ = w.set_size(tauri::Size::Physical(size));
+    }
 
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.set_visible_on_all_workspaces(true);

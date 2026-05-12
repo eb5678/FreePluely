@@ -27,8 +27,7 @@ export const ResultsSection = ({
     return null;
   }
 
-  const isMac = navigator.platform.toLowerCase().includes("mac");
-  const modKey = isMac ? "⌘" : "Ctrl";
+  const modKey = "Alt";
 
   return (
     <div className="rounded-lg border border-border/50 bg-muted/20 p-3 space-y-3">

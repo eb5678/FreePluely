@@ -1,12 +1,4 @@
-/**
- * Hardcoded to return Linux OS exclusively
- */
-export const getPlatform = (): "linux" => {
-  return "linux";
-};
-
-export const isMacOS = (): boolean => false;
-
-export const isWindows = (): boolean => false;
-
-export const isLinux = (): boolean => true;
+export const getPlatform = () => "linux";
+export const isMacOS = () => false;
+export const isWindows = () => false;
+export const isLinux = () => true;

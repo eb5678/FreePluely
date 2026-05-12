@@ -103,9 +103,13 @@
   * {
     @apply border-border outline-ring/50;
   }
+  
   /* Immediate styling enforcing AMOLED background globally to drop initial white flashes altogether */
-  body {
+  html:not(.is-overlay), html:not(.is-overlay) body {
     background-color: #000000 !important;
+  }
+  
+  body {
     @apply text-foreground;
   }
 }

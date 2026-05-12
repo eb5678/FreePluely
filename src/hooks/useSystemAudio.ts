@@ -633,31 +633,6 @@ export function useSystemAudio() {
     }
   }, [isContinuousMode]);
 
-  const handleSetup = useCallback(async () => {
-    try {
-      const platform = navigator.platform.toLowerCase();
-
-      if (platform.includes("mac") || platform.includes("win")) {
-        await invoke("request_system_audio_access");
-      }
-
-      // Delay to give the user time to grant permissions in the system dialog.
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      const hasAccess = await invoke<boolean>("check_system_audio_access");
-      if (hasAccess) {
-        setSetupRequired(false);
-        await startCapture();
-      } else {
-        setSetupRequired(true);
-        setError("Permission not granted. Please try the manual steps.");
-      }
-    } catch (err) {
-      setError("Failed to request access. Please try the manual steps below.");
-      setSetupRequired(true);
-    }
-  }, [startCapture]);
-
   useEffect(() => {
     const shouldOpenPopover =
       capturing ||
@@ -866,7 +841,6 @@ export function useSystemAudio() {
     setupRequired,
     startCapture,
     stopCapture,
-    handleSetup,
     isPopoverOpen,
     setIsPopoverOpen,
     // Conversation management

@@ -11,6 +11,10 @@ const windowLabel = currentWindow.label;
 
 // Render different components based on window label
 if (windowLabel.startsWith("capture-overlay-")) {
+  // Override the strict AMOLED background for transparent overlay mode natively
+  document.documentElement.style.setProperty("background-color", "transparent", "important");
+  document.body.style.setProperty("background-color", "transparent", "important");
+
   const monitorIndex = parseInt(windowLabel.split("-")[2], 10) || 0;
   // Render overlay without providers
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
@@ -19,6 +23,10 @@ if (windowLabel.startsWith("capture-overlay-")) {
     </React.StrictMode>
   );
 } else {
+  // Maintain the AMOLED solid background for main windows to prevent white flashes
+  document.documentElement.style.setProperty("background-color", "#000000", "important");
+  document.body.style.setProperty("background-color", "#000000", "important");
+
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>
       <ThemeProvider>

@@ -1,7 +1,6 @@
 // src/hooks/useApp.ts
 import { useEffect, useState, useRef } from "react";
 import { useTitles } from "@/hooks";
-import { listen } from "@tauri-apps/api/event";
 import { safeLocalStorage, migrateLocalStorageToSQLite } from "@/lib";
 import { getShortcutsConfig } from "@/lib/storage";
 import { invoke } from "@tauri-apps/api/core";
@@ -69,34 +68,6 @@ export const useApp = () => {
   const handleNewConversation = () => {
     window.dispatchEvent(new CustomEvent("newConversation"));
   };
-
-  useEffect(() => {
-    const unlistenPromise = listen<boolean>(
-      "toggle-window-visibility",
-      (event) => {
-        const platform = navigator.platform.toLowerCase();
-        if (typeof event.payload === "boolean" && platform.includes("win")) {
-          setIsHidden(!event.payload);
-          const popover = document.getElementById("popover-content");
-          if (popover) {
-            popover.style.setProperty("display", "none", "important");
-            popover.setAttribute("data-state", "closed");
-
-            const popoverTriggers = document.querySelectorAll(
-              '[data-slot="popover-trigger"]'
-            );
-            popoverTriggers.forEach((trigger) => {
-              trigger.setAttribute("data-state", "closed");
-            });
-          }
-        }
-      }
-    );
-
-    return () => {
-      unlistenPromise.then((unlisten) => unlisten());
-    };
-  }, []);
 
   useEffect(() => {
     const handleShortcutRegistrationError = (

@@ -256,6 +256,7 @@ export const useCompletion = () => {
             ...prev,
             input: "",
             attachedFiles: [],
+            response: "",
           }));
         }
       } catch (error) {
